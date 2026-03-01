@@ -118,3 +118,29 @@ export async function PATCH(request: Request, context: { params: Promise<{ wheel
 
   return NextResponse.json({ wheel });
 }
+
+export async function DELETE(_request: Request, context: { params: Promise<{ wheelId: string }> }) {
+  const authContext = await getAuthContext();
+  if (authContext instanceof NextResponse) {
+    return authContext;
+  }
+
+  const dbUser = await getOrCreateUserFromContext(authContext);
+  const params = await context.params;
+
+  const hasAccess = await assertWheelAccess({
+    wheelId: params.wheelId,
+    context: { ...authContext, userId: dbUser.id },
+    requiredRole: WheelRole.OWNER
+  });
+
+  if (!hasAccess) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  await prisma.wheel.delete({
+    where: { id: params.wheelId }
+  });
+
+  return NextResponse.json({ removed: 1 });
+}

@@ -100,11 +100,31 @@ export async function POST(request: Request, context: { params: Promise<{ wheelI
       return NextResponse.json({ error: "userEmail is required for USER shares" }, { status: 400 });
     }
 
-    const targetUser = await prisma.user.upsert({
-      where: { email },
-      update: {},
-      create: { email }
+    const targetUser = await prisma.user.findFirst({
+      where: {
+        email,
+        ...(wheel.tenantId
+          ? {
+              tenantMemberships: {
+                some: {
+                  tenantId: wheel.tenantId,
+                  isDisabled: false
+                }
+              }
+            }
+          : {})
+      },
+      select: {
+        id: true
+      }
     });
+
+    if (!targetUser) {
+      return NextResponse.json(
+        { error: "User must exist and be an active member of this tenant before sharing." },
+        { status: 400 }
+      );
+    }
 
     const share = await prisma.$transaction(async (tx) => {
       await tx.wheelShare.deleteMany({

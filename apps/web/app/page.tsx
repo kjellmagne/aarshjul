@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DateTime } from "luxon";
-import { signIn, signOut, useSession } from "next-auth/react";
+import Link from "next/link";
+import { getProviders, signIn, signOut, useSession } from "next-auth/react";
 import {
   assignActivityLanes,
   buildRingLayout,
@@ -198,6 +199,92 @@ type ShareEntry = {
   } | null;
 };
 
+type ShareableUserOptionModel = {
+  id: string;
+  email: string | null;
+  name: string | null;
+};
+
+type AdminOverviewModel = {
+  users: number;
+  wheels: number;
+  activities: number;
+  shares: number;
+  groups: number;
+  accounts: number;
+  localAccounts: number;
+  azureAccounts: number;
+};
+
+type AdminUserModel = {
+  id: string;
+  email: string | null;
+  name: string | null;
+  role: "MEMBER" | "ADMIN";
+  isAdmin: boolean;
+  isDisabled: boolean;
+  lastLoginAt: string | null;
+  createdAt: string;
+  hasLocalPassword: boolean;
+  hasAzureIdentity: boolean;
+  providers: string[];
+  counts: {
+    ownedWheels: number;
+    wheelUserShares: number;
+    activitiesCreated: number;
+  };
+};
+
+type AdminTenantOptionModel = {
+  id: string;
+  name: string;
+  slug: string;
+};
+
+type AdminTenantSettingsModel = {
+  id: string;
+  tenantName: string;
+  supportEmail: string | null;
+  timezone: string;
+  defaultLanguage: "nb" | "en";
+  allowLocalAuth: boolean;
+  allowAzureAuth: boolean;
+  azureTenantId: string | null;
+  azureClientId: string | null;
+  azureClientSecret: string | null;
+  azureConfigured: boolean;
+  smtpHost: string | null;
+  smtpPort: number | null;
+  smtpSecure: boolean;
+  smtpUser: string | null;
+  smtpPass: string | null;
+  smtpFrom: string | null;
+  smtpReplyTo: string | null;
+  smtpConfigured: boolean;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: null;
+};
+
+type UserTenantMembershipModel = {
+  tenantId: string;
+  role: "MEMBER" | "ADMIN";
+  tenant: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+};
+
+type PublicTenantLoginOptionModel = {
+  id: string;
+  name: string;
+  slug: string;
+  allowLocalAuth: boolean;
+  allowAzureAuth: boolean;
+  azureConfigured: boolean;
+};
+
 const TIMEZONE = "Europe/Oslo";
 const FULL_CIRCLE = Math.PI * 2;
 const VIEWBOX_SIZE = 960;
@@ -206,6 +293,7 @@ const MIN_ZOOM = 0.65;
 const MAX_ZOOM = 2.4;
 const ZOOM_STEP = 0.15;
 const SEAM_ANGLE = 0;
+const ACTIVE_TENANT_STORAGE_KEY = "aarshjul.activeTenantId";
 const CATEGORY_LABEL_FONT_SIZE = 12;
 const CATEGORY_LABEL_BASELINE_BIAS = 0.28;
 const CATEGORY_LABEL_REPEAT_COUNT = 4;
@@ -252,7 +340,6 @@ const MONTH_NAMES: Record<AppLanguage, readonly string[]> = {
 const UI_TEXT: Record<
   AppLanguage,
   {
-    planAgain: string;
     previous: string;
     next: string;
     jumpTo: string;
@@ -260,9 +347,12 @@ const UI_TEXT: Record<
     weekPrefix: string;
     quarterPrefix: string;
     copyWheel: string;
+    openSharing: string;
+    closeSharing: string;
     openSettings: string;
     settingsTitle: string;
     closeSettings: string;
+    settingsPersonalHint: string;
     theme: string;
     language: string;
     languageNb: string;
@@ -364,12 +454,40 @@ const UI_TEXT: Record<
     clipboardBlocked: string;
     clipboardBlockedPng: string;
     clipboardBlockedSvg: string;
+    localEmail: string;
+    localPassword: string;
+    localName: string;
+    localSignIn: string;
+    localRegister: string;
+    sysAdminOpenPage: string;
+    localHaveAccount: string;
+    localNeedAccount: string;
+    forgotPassword: string;
+    authOr: string;
+    authProviderChoice: string;
+    authProviderLocal: string;
+    authProviderMicrosoft: string;
+    azureUnavailable: string;
+    noAuthProviders: string;
+    localAuthFailed: string;
+    localRegisterFailed: string;
+    azureSignIn: string;
+    userRoleLabel: string;
+    activeTenantLabel: string;
+    roleSystemAdmin: string;
+    roleTenantAdmin: string;
+    roleTenantMember: string;
+    roleNoTenant: string;
     signIn: string;
     signOut: string;
     authRequired: string;
+    loginTenantLabel: string;
+    loginTenantUnavailable: string;
     loading: string;
     wheelField: string;
     createWheel: string;
+    renameWheel: string;
+    renameWheelPrompt: string;
     wheelCreatePrompt: string;
     wheelCreateDefaultTitle: string;
     wheelLoadFailed: string;
@@ -378,6 +496,8 @@ const UI_TEXT: Record<
     sharingTitle: string;
     shareRoleField: string;
     shareUserField: string;
+    shareUserPickerField: string;
+    shareUserPickerPlaceholder: string;
     shareUserPlaceholder: string;
     shareUserAction: string;
     shareGroupField: string;
@@ -385,10 +505,114 @@ const UI_TEXT: Record<
     shareGroupAction: string;
     removeShare: string;
     noShares: string;
+    deleteWheel: string;
+    deleteWheelConfirm: string;
+    deleteRing: string;
+    deleteRingConfirm: string;
+    minimumOneRing: string;
+    advancedSetup: string;
+    advancedSetupTitle: string;
+    closeAdvancedSetup: string;
+    azureTenantId: string;
+    azureClientId: string;
+    azureClientSecret: string;
+    azureCallbackUri: string;
+    azureCopyEnv: string;
+    azureEnvCopied: string;
+    azureSetupHow: string;
+    azureSetupStep1: string;
+    azureSetupStep2: string;
+    azureSetupStep3: string;
+    azureSetupStep4: string;
+    azureSetupStep5: string;
+    adminSetup: string;
+    adminSetupTitle: string;
+    adminSetupHint: string;
+    closeAdminSetup: string;
+    adminRefresh: string;
+    adminOpenAzureSetup: string;
+    adminOpenUserAdmin: string;
+    smtpSettingsTitle: string;
+    smtpSettingsHint: string;
+    smtpHostField: string;
+    smtpPortField: string;
+    smtpSecureField: string;
+    smtpUserField: string;
+    smtpPassField: string;
+    smtpFromField: string;
+    smtpReplyToField: string;
+    smtpTestToField: string;
+    smtpSaveAction: string;
+    smtpTestAction: string;
+    smtpSaved: string;
+    smtpTestSent: string;
+    adminOverviewTitle: string;
+    adminUsersTitle: string;
+    adminTotalUsers: string;
+    adminTotalWheels: string;
+    adminTotalActivities: string;
+    adminTotalShares: string;
+    adminTotalGroups: string;
+    adminTotalAccounts: string;
+    adminLocalAccounts: string;
+    adminAzureAccounts: string;
+    adminUserName: string;
+    adminUserEmail: string;
+    adminUserRoles: string;
+    adminUserProviders: string;
+    adminUserStats: string;
+    adminUserLastLogin: string;
+    adminActions: string;
+    adminUserStatus: string;
+    adminUserStatusActive: string;
+    adminUserStatusDisabled: string;
+    adminUsersHint: string;
+    userAdminTitle: string;
+    closeUserAdmin: string;
+    userAdminSearch: string;
+    userAdminRoleFilter: string;
+    userAdminStatusFilter: string;
+    userAdminFilterAll: string;
+    userAdminFilterAdmins: string;
+    userAdminFilterMembers: string;
+    userAdminFilterActive: string;
+    userAdminFilterDisabled: string;
+    adminNewUserTitle: string;
+    adminNewUserNameField: string;
+    adminNewUserEmailField: string;
+    adminNewUserPasswordField: string;
+    adminNewUserAdminToggle: string;
+    adminCreateUser: string;
+    adminEditUser: string;
+    adminEditUserHint: string;
+    adminPasswordOptional: string;
+    adminSaveUser: string;
+    adminCancelEditUser: string;
+    adminEnableUser: string;
+    adminDisableUser: string;
+    adminDeleteUser: string;
+    adminDeleteUserConfirm: string;
+    adminGrantAdmin: string;
+    adminRevokeAdmin: string;
+    adminNoUsers: string;
+    adminLoadFailed: string;
+    adminTenantSectionTitle: string;
+    adminTenantField: string;
+    adminScopeHint: string;
+    adminTenantNameField: string;
+    adminTenantSupportEmailField: string;
+    adminTenantTimezoneField: string;
+    adminTenantLanguageField: string;
+    adminTenantSave: string;
+    adminTenantDiscard: string;
+    adminTenantUnsaved: string;
+    adminTenantSaved: string;
+    adminTenantUnavailable: string;
+    adminTenantManagedBySystemAdmin: string;
+    systemAdminSetup: string;
   }
 > = {
   nb: {
-    planAgain: "Planlegg pa nytt",
     previous: "Forrige",
     next: "Neste",
     jumpTo: "Ga til",
@@ -396,9 +620,12 @@ const UI_TEXT: Record<
     weekPrefix: "Uke",
     quarterPrefix: "K",
     copyWheel: "Kopier synlig hjul",
+    openSharing: "Apne deling",
+    closeSharing: "Lukk deling",
     openSettings: "Aapne innstillinger",
     settingsTitle: "Innstillinger",
     closeSettings: "Lukk innstillinger",
+    settingsPersonalHint: "Personlige visningsvalg for din bruker.",
     theme: "Fargetema",
     language: "Sprak",
     languageNb: "Norsk",
@@ -500,12 +727,40 @@ const UI_TEXT: Record<
     clipboardBlocked: "Clipboard blokkert",
     clipboardBlockedPng: "Clipboard blokkert, lastet ned PNG",
     clipboardBlockedSvg: "Clipboard blokkert, lastet ned SVG",
+    localEmail: "E-post",
+    localPassword: "Passord",
+    localName: "Navn",
+    localSignIn: "Logg inn lokalt",
+    localRegister: "Opprett lokal bruker",
+    sysAdminOpenPage: "Systemadmin-innlogging",
+    localHaveAccount: "Har du allerede konto?",
+    localNeedAccount: "Trenger du lokal konto?",
+    forgotPassword: "Glemt passord?",
+    authOr: "eller",
+    authProviderChoice: "Velg innlogging",
+    authProviderLocal: "Lokal",
+    authProviderMicrosoft: "Microsoft",
+    azureUnavailable: "Microsoft-innlogging er ikke tilgjengelig akkurat nå.",
+    noAuthProviders: "Ingen innloggingsleverandorer er aktivert. Kontakt administrator.",
+    localAuthFailed: "Lokal innlogging feilet",
+    localRegisterFailed: "Kunne ikke opprette lokal bruker",
+    azureSignIn: "Logg inn med Azure AD",
+    userRoleLabel: "Rolle",
+    activeTenantLabel: "Aktiv tenant",
+    roleSystemAdmin: "Systemadmin",
+    roleTenantAdmin: "Tenant admin",
+    roleTenantMember: "Tenant bruker",
+    roleNoTenant: "Ingen tenant valgt",
     signIn: "Logg inn med Azure AD",
     signOut: "Logg ut",
     authRequired: "Du må logge inn for å bruke årshjulet.",
+    loginTenantLabel: "Tenant",
+    loginTenantUnavailable: "Ingen tenant er tilgjengelig for innlogging akkurat nå.",
     loading: "Laster...",
     wheelField: "Hjul",
     createWheel: "Nytt hjul",
+    renameWheel: "Gi nytt navn",
+    renameWheelPrompt: "Nytt navn på hjul",
     wheelCreatePrompt: "Navn på nytt hjul",
     wheelCreateDefaultTitle: "Nytt årshjul",
     wheelLoadFailed: "Kunne ikke laste hjuldata",
@@ -514,16 +769,122 @@ const UI_TEXT: Record<
     sharingTitle: "Deling",
     shareRoleField: "Rolle",
     shareUserField: "Del med bruker",
+    shareUserPickerField: "Velg bruker",
+    shareUserPickerPlaceholder: "Velg en bruker",
     shareUserPlaceholder: "bruker@domene.no",
     shareUserAction: "Del",
     shareGroupField: "Del med AAD-gruppe",
     shareGroupPlaceholder: "Azure gruppe-id",
     shareGroupAction: "Del gruppe",
     removeShare: "Fjern",
-    noShares: "Ingen delinger ennå."
+    noShares: "Ingen delinger ennå.",
+    deleteWheel: "Slett hjul",
+    deleteWheelConfirm: "Slette dette hjulet? Dette kan ikke angres.",
+    deleteRing: "Slett ring",
+    deleteRingConfirm: "Slette denne ringen? Aktiviteter i ringen slettes også.",
+    minimumOneRing: "Hjulet må ha minst én ring.",
+    advancedSetup: "Azure AD-oppsett",
+    advancedSetupTitle: "Azure AD-oppsett",
+    closeAdvancedSetup: "Lukk Azure AD-oppsett",
+    azureTenantId: "Tenant ID",
+    azureClientId: "Client ID",
+    azureClientSecret: "Client Secret",
+    azureCallbackUri: "Redirect URI",
+    azureCopyEnv: "Lagre Azure-oppsett",
+    azureEnvCopied: "Azure-oppsett lagret",
+    azureSetupHow: "Slik setter du opp Azure AD",
+    azureSetupStep1: "1. Opprett App registration i Azure AD.",
+    azureSetupStep2: "2. Legg til Redirect URI nedenfor i Authentication.",
+    azureSetupStep3: "3. Opprett en Client Secret i Certificates & secrets.",
+    azureSetupStep4: "4. Lim inn verdiene under og lagre tenant-oppsettet.",
+    azureSetupStep5: "5. Innlogging med Microsoft bruker tenantens lagrede oppsett.",
+    adminSetup: "Tenant-oppsett",
+    adminSetupTitle: "Tenant-oppsett",
+    adminSetupHint: "Administrer brukere og oppsett for denne tenanten.",
+    closeAdminSetup: "Lukk tenant-oppsett",
+    adminRefresh: "Oppdater",
+    adminOpenAzureSetup: "Azure AD-oppsett",
+    adminOpenUserAdmin: "Brukeradministrasjon",
+    smtpSettingsTitle: "E-postserver (SMTP)",
+    smtpSettingsHint: "Brukes for varslinger og påminnelser i denne tenanten.",
+    smtpHostField: "SMTP-vert",
+    smtpPortField: "Port",
+    smtpSecureField: "Bruk TLS/SSL (secure)",
+    smtpUserField: "Brukernavn",
+    smtpPassField: "Passord",
+    smtpFromField: "Fra-adresse",
+    smtpReplyToField: "Svar-til (valgfri)",
+    smtpTestToField: "Testmottaker",
+    smtpSaveAction: "Lagre e-postoppsett",
+    smtpTestAction: "Send test-e-post",
+    smtpSaved: "E-postoppsett lagret.",
+    smtpTestSent: "Test-e-post sendt.",
+    adminOverviewTitle: "Oversikt",
+    adminUsersTitle: "Kontoer",
+    adminTotalUsers: "Brukere",
+    adminTotalWheels: "Hjul",
+    adminTotalActivities: "Aktiviteter",
+    adminTotalShares: "Delinger",
+    adminTotalGroups: "AAD-grupper",
+    adminTotalAccounts: "Innlogginger",
+    adminLocalAccounts: "Lokale kontoer",
+    adminAzureAccounts: "Azure-kontoer",
+    adminUserName: "Navn",
+    adminUserEmail: "E-post",
+    adminUserRoles: "Roller",
+    adminUserProviders: "Providere",
+    adminUserStats: "Statistikk",
+    adminUserLastLogin: "Sist innlogget",
+    adminActions: "Handlinger",
+    adminUserStatus: "Status",
+    adminUserStatusActive: "Aktiv",
+    adminUserStatusDisabled: "Deaktivert",
+    adminUsersHint: "Opprett, rediger, deaktiver eller slett brukere i denne tenanten.",
+    userAdminTitle: "Brukeradministrasjon",
+    closeUserAdmin: "Lukk brukeradministrasjon",
+    userAdminSearch: "Søk",
+    userAdminRoleFilter: "Rollefilter",
+    userAdminStatusFilter: "Statusfilter",
+    userAdminFilterAll: "Alle",
+    userAdminFilterAdmins: "Admin",
+    userAdminFilterMembers: "Bruker",
+    userAdminFilterActive: "Aktive",
+    userAdminFilterDisabled: "Deaktiverte",
+    adminNewUserTitle: "Ny bruker",
+    adminNewUserNameField: "Navn",
+    adminNewUserEmailField: "E-post",
+    adminNewUserPasswordField: "Passord",
+    adminNewUserAdminToggle: "Gi tenant admin-rolle",
+    adminCreateUser: "Opprett bruker",
+    adminEditUser: "Rediger bruker",
+    adminEditUserHint: "Oppdater brukerdata, rolle og status.",
+    adminPasswordOptional: "Nytt passord (valgfritt)",
+    adminSaveUser: "Lagre bruker",
+    adminCancelEditUser: "Avbryt redigering",
+    adminEnableUser: "Aktiver",
+    adminDisableUser: "Deaktiver",
+    adminDeleteUser: "Slett",
+    adminDeleteUserConfirm: "Slette denne brukeren fra tenanten?",
+    adminGrantAdmin: "Gi admin",
+    adminRevokeAdmin: "Fjern admin",
+    adminNoUsers: "Ingen kontoer funnet.",
+    adminLoadFailed: "Kunne ikke laste admin-data",
+    adminTenantSectionTitle: "Tenant-oppsett",
+    adminTenantField: "Tenant",
+    adminScopeHint: "Velg tenant for oversikt og brukerstyring i denne sesjonen.",
+    adminTenantNameField: "Tenant-navn",
+    adminTenantSupportEmailField: "Support e-post",
+    adminTenantTimezoneField: "Tidssone",
+    adminTenantLanguageField: "Sprak",
+    adminTenantSave: "Lagre tenant-oppsett",
+    adminTenantDiscard: "Forkast",
+    adminTenantUnsaved: "Ulagrede endringer.",
+    adminTenantSaved: "Alle endringer lagret.",
+    adminTenantUnavailable: "Ingen tenant tilgjengelig for denne admin-brukeren.",
+    adminTenantManagedBySystemAdmin: "Overordnede tenant-innstillinger administreres av systemadmin.",
+    systemAdminSetup: "Systemadmin"
   },
   en: {
-    planAgain: "Plan again",
     previous: "Previous",
     next: "Next",
     jumpTo: "Go to",
@@ -531,9 +892,12 @@ const UI_TEXT: Record<
     weekPrefix: "Week",
     quarterPrefix: "Q",
     copyWheel: "Copy visible wheel",
+    openSharing: "Open sharing",
+    closeSharing: "Close sharing",
     openSettings: "Open settings",
     settingsTitle: "Settings",
     closeSettings: "Close settings",
+    settingsPersonalHint: "Personal viewing preferences for your user.",
     theme: "Color theme",
     language: "Language",
     languageNb: "Norwegian",
@@ -635,12 +999,40 @@ const UI_TEXT: Record<
     clipboardBlocked: "Clipboard blocked",
     clipboardBlockedPng: "Clipboard blocked, downloaded PNG",
     clipboardBlockedSvg: "Clipboard blocked, downloaded SVG",
+    localEmail: "Email",
+    localPassword: "Password",
+    localName: "Name",
+    localSignIn: "Sign in locally",
+    localRegister: "Create local user",
+    sysAdminOpenPage: "System admin login",
+    localHaveAccount: "Already have an account?",
+    localNeedAccount: "Need a local account?",
+    forgotPassword: "Forgot password?",
+    authOr: "or",
+    authProviderChoice: "Choose sign-in",
+    authProviderLocal: "Local",
+    authProviderMicrosoft: "Microsoft",
+    azureUnavailable: "Microsoft sign-in is currently unavailable.",
+    noAuthProviders: "No sign-in providers are enabled. Contact your administrator.",
+    localAuthFailed: "Local sign-in failed",
+    localRegisterFailed: "Could not create local user",
+    azureSignIn: "Sign in with Azure AD",
+    userRoleLabel: "Role",
+    activeTenantLabel: "Active tenant",
+    roleSystemAdmin: "System admin",
+    roleTenantAdmin: "Tenant admin",
+    roleTenantMember: "Tenant user",
+    roleNoTenant: "No tenant selected",
     signIn: "Sign in with Azure AD",
     signOut: "Sign out",
     authRequired: "You must sign in to use the wheel.",
+    loginTenantLabel: "Tenant",
+    loginTenantUnavailable: "No tenant is currently available for sign-in.",
     loading: "Loading...",
     wheelField: "Wheel",
     createWheel: "New wheel",
+    renameWheel: "Rename wheel",
+    renameWheelPrompt: "New wheel name",
     wheelCreatePrompt: "Name your new wheel",
     wheelCreateDefaultTitle: "New annual wheel",
     wheelLoadFailed: "Could not load wheel data",
@@ -649,40 +1041,131 @@ const UI_TEXT: Record<
     sharingTitle: "Sharing",
     shareRoleField: "Role",
     shareUserField: "Share with user",
+    shareUserPickerField: "Pick user",
+    shareUserPickerPlaceholder: "Select a user",
     shareUserPlaceholder: "user@domain.com",
     shareUserAction: "Share",
     shareGroupField: "Share with AAD group",
     shareGroupPlaceholder: "Azure group id",
     shareGroupAction: "Share group",
     removeShare: "Remove",
-    noShares: "No shares yet."
+    noShares: "No shares yet.",
+    deleteWheel: "Delete wheel",
+    deleteWheelConfirm: "Delete this wheel? This cannot be undone.",
+    deleteRing: "Delete ring",
+    deleteRingConfirm: "Delete this ring? Activities in this ring will also be deleted.",
+    minimumOneRing: "The wheel must have at least one ring.",
+    advancedSetup: "Azure AD setup",
+    advancedSetupTitle: "Azure AD setup",
+    closeAdvancedSetup: "Close Azure AD setup",
+    azureTenantId: "Tenant ID",
+    azureClientId: "Client ID",
+    azureClientSecret: "Client Secret",
+    azureCallbackUri: "Redirect URI",
+    azureCopyEnv: "Save Azure setup",
+    azureEnvCopied: "Azure setup saved",
+    azureSetupHow: "How to set up Azure AD",
+    azureSetupStep1: "1. Create an App registration in Azure AD.",
+    azureSetupStep2: "2. Add the Redirect URI below in Authentication.",
+    azureSetupStep3: "3. Create a Client Secret in Certificates & secrets.",
+    azureSetupStep4: "4. Fill in values below and save tenant setup.",
+    azureSetupStep5: "5. Microsoft sign-in uses the tenant's saved setup.",
+    adminSetup: "Tenant setup",
+    adminSetupTitle: "Tenant setup",
+    adminSetupHint: "Manage users and setup for this tenant.",
+    closeAdminSetup: "Close tenant setup",
+    adminRefresh: "Refresh",
+    adminOpenAzureSetup: "Azure AD setup",
+    adminOpenUserAdmin: "User administration",
+    smtpSettingsTitle: "E-mail server (SMTP)",
+    smtpSettingsHint: "Used for notifications and reminders in this tenant.",
+    smtpHostField: "SMTP host",
+    smtpPortField: "Port",
+    smtpSecureField: "Use TLS/SSL (secure)",
+    smtpUserField: "Username",
+    smtpPassField: "Password",
+    smtpFromField: "From address",
+    smtpReplyToField: "Reply-to (optional)",
+    smtpTestToField: "Test recipient",
+    smtpSaveAction: "Save e-mail setup",
+    smtpTestAction: "Send test e-mail",
+    smtpSaved: "E-mail setup saved.",
+    smtpTestSent: "Test e-mail sent.",
+    adminOverviewTitle: "Overview",
+    adminUsersTitle: "Accounts",
+    adminTotalUsers: "Users",
+    adminTotalWheels: "Wheels",
+    adminTotalActivities: "Activities",
+    adminTotalShares: "Shares",
+    adminTotalGroups: "AAD groups",
+    adminTotalAccounts: "Sign-ins",
+    adminLocalAccounts: "Local accounts",
+    adminAzureAccounts: "Azure accounts",
+    adminUserName: "Name",
+    adminUserEmail: "Email",
+    adminUserRoles: "Roles",
+    adminUserProviders: "Providers",
+    adminUserStats: "Stats",
+    adminUserLastLogin: "Last login",
+    adminActions: "Actions",
+    adminUserStatus: "Status",
+    adminUserStatusActive: "Active",
+    adminUserStatusDisabled: "Disabled",
+    adminUsersHint: "Create, edit, disable or delete users in this tenant.",
+    userAdminTitle: "User administration",
+    closeUserAdmin: "Close user administration",
+    userAdminSearch: "Search",
+    userAdminRoleFilter: "Role filter",
+    userAdminStatusFilter: "Status filter",
+    userAdminFilterAll: "All",
+    userAdminFilterAdmins: "Admins",
+    userAdminFilterMembers: "Members",
+    userAdminFilterActive: "Active",
+    userAdminFilterDisabled: "Disabled",
+    adminNewUserTitle: "New user",
+    adminNewUserNameField: "Name",
+    adminNewUserEmailField: "E-mail",
+    adminNewUserPasswordField: "Password",
+    adminNewUserAdminToggle: "Grant tenant admin role",
+    adminCreateUser: "Create user",
+    adminEditUser: "Edit user",
+    adminEditUserHint: "Update user details, role and status.",
+    adminPasswordOptional: "New password (optional)",
+    adminSaveUser: "Save user",
+    adminCancelEditUser: "Cancel edit",
+    adminEnableUser: "Enable",
+    adminDisableUser: "Disable",
+    adminDeleteUser: "Delete",
+    adminDeleteUserConfirm: "Delete this user from the tenant?",
+    adminGrantAdmin: "Grant admin",
+    adminRevokeAdmin: "Revoke admin",
+    adminNoUsers: "No accounts found.",
+    adminLoadFailed: "Could not load admin data",
+    adminTenantSectionTitle: "Tenant setup",
+    adminTenantField: "Tenant",
+    adminScopeHint: "Select tenant scope for overview and user management in this session.",
+    adminTenantNameField: "Tenant name",
+    adminTenantSupportEmailField: "Support e-mail",
+    adminTenantTimezoneField: "Timezone",
+    adminTenantLanguageField: "Language",
+    adminTenantSave: "Save tenant setup",
+    adminTenantDiscard: "Discard",
+    adminTenantUnsaved: "Unsaved changes.",
+    adminTenantSaved: "All changes saved.",
+    adminTenantUnavailable: "No tenant is available for this admin account.",
+    adminTenantManagedBySystemAdmin: "Tenant-wide settings are managed by system admin.",
+    systemAdminSetup: "System admin"
   }
 };
 
 const RING_TEMPLATES: RingTemplate[] = [
   {
-    id: "marketing",
+    id: "default",
     labels: {
-      nb: "Markedsforing",
-      en: "Marketing"
+      nb: "Standard",
+      en: "Default"
     },
-    heightPct: 44
-  },
-  {
-    id: "finance",
-    labels: {
-      nb: "Finans",
-      en: "Finance"
-    },
-    heightPct: 33
-  },
-  {
-    id: "hr",
-    labels: {
-      nb: "HR",
-      en: "HR"
-    },
-    heightPct: 23
+    heightPct: 36
   }
 ];
 
@@ -889,115 +1372,9 @@ const THEME_PRESETS: Record<ThemeId, ThemePreset> = {
   }
 };
 
-const INITIAL_TAGS: TagModel[] = [
-  {
-    id: "kampanje",
-    label: "Kampanje",
-    color: "#5a8fc1",
-    description: "Aktiviteter knyttet til kampanjer eller lanseringer."
-  },
-  {
-    id: "salg",
-    label: "Salg",
-    color: "#4ea3a4",
-    description: "Aktiviteter som direkte stotter salg."
-  },
-  {
-    id: "black-friday",
-    label: "Black Friday",
-    color: "#496f96",
-    description: "Innsatser spesifikt rundt Black Friday-perioden."
-  },
-  {
-    id: "rapport",
-    label: "Rapport",
-    color: "#a184cf",
-    description: "Milepaler for rapportering og statusleveranser."
-  },
-  {
-    id: "okonomi",
-    label: "Okonomi",
-    color: "#7b64b5",
-    description: "Okonomirelaterte aktiviteter og oppfolging."
-  },
-  {
-    id: "budsjett",
-    label: "Budsjett",
-    color: "#af86d8",
-    description: "Planlegging, utkast og revisjon av budsjett."
-  },
-  {
-    id: "plan",
-    label: "Plan",
-    color: "#6d9dc0",
-    description: "Forberedelser og koordinering av planer."
-  },
-  {
-    id: "team",
-    label: "Team",
-    color: "#cf8f9b",
-    description: "Interne teamaktiviteter og samhandling."
-  },
-  {
-    id: "samhandling",
-    label: "Samhandling",
-    color: "#a66f81",
-    description: "Aktiviteter pa tvers av roller eller avdelinger."
-  }
-];
+const INITIAL_TAGS: TagModel[] = [];
 
-const initialActivities: ActivityModel[] = [
-  {
-    id: "m1",
-    ringId: "marketing",
-    title: "Julekampanje mote",
-    startAt: "2026-10-14T00:00:00",
-    endAt: "2026-11-03T00:00:00",
-    color: "#6da8c7",
-    tags: ["kampanje", "salg"],
-    recurring: true
-  },
-  {
-    id: "m2",
-    ringId: "marketing",
-    title: "Black Friday mote",
-    startAt: "2026-11-18T00:00:00",
-    endAt: "2026-12-01T00:00:00",
-    color: "#6f9fbc",
-    tags: ["kampanje", "black-friday"],
-    recurring: true
-  },
-  {
-    id: "f1",
-    ringId: "finance",
-    title: "Manedlig rapport",
-    startAt: "2026-10-09T00:00:00",
-    endAt: "2026-10-22T00:00:00",
-    color: "#cbc2ee",
-    tags: ["rapport", "okonomi"],
-    recurring: true
-  },
-  {
-    id: "f2",
-    ringId: "finance",
-    title: "Forberede budsjett",
-    startAt: "2026-10-24T00:00:00",
-    endAt: "2026-11-08T00:00:00",
-    color: "#cec7f1",
-    tags: ["budsjett", "plan"],
-    recurring: true
-  },
-  {
-    id: "h1",
-    ringId: "hr",
-    title: "Felles mote",
-    startAt: "2026-10-19T00:00:00",
-    endAt: "2026-11-05T00:00:00",
-    color: "#ebcad0",
-    tags: ["team", "samhandling"],
-    recurring: true
-  }
-];
+const initialActivities: ActivityModel[] = [];
 
 function polar(cx: number, cy: number, radius: number, angleRad: number) {
   const adjusted = angleRad - Math.PI / 2;
@@ -1299,6 +1676,20 @@ function buildRingBands(sourceRings: RingModel[]): RingBand[] {
   return [...bands].sort((a, b) => b.activityBand.outerRadius - a.activityBand.outerRadius);
 }
 
+function createDefaultRingTemplate(language: AppLanguage, accent = "#6da8c7"): RingTemplate {
+  const color = blendHexWithWhite(accent, 0.62);
+  return {
+    id: "default",
+    labels: {
+      nb: language === "nb" ? "Standard" : "Default",
+      en: language === "nb" ? "Default" : "Default"
+    },
+    heightPct: 36,
+    color,
+    accent
+  };
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -1420,15 +1811,31 @@ function toIsoFromLocalDateTime(value: string, timezone: string): string | null 
 }
 
 export default function Page() {
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
+  const [localAuthMode, setLocalAuthMode] = useState<"login" | "register">("login");
+  const [localEmail, setLocalEmail] = useState("");
+  const [localPassword, setLocalPassword] = useState("");
+  const [localName, setLocalName] = useState("");
+  const [localAuthError, setLocalAuthError] = useState("");
+  const [localAuthBusy, setLocalAuthBusy] = useState(false);
+  const [hasAzureAuth, setHasAzureAuth] = useState(true);
+  const [loginTenants, setLoginTenants] = useState<PublicTenantLoginOptionModel[]>([]);
+  const [loginTenantId, setLoginTenantId] = useState("");
   const [language, setLanguage] = useState<AppLanguage>("nb");
   const [themeId, setThemeId] = useState<ThemeId>("nordic");
   const [ringTemplates, setRingTemplates] = useState<RingTemplate[]>(RING_TEMPLATES);
   const [seamShadowEnabled, setSeamShadowEnabled] = useState(true);
   const [windowAnchorMode, setWindowAnchorMode] = useState<WindowAnchorMode>("dynamic_today");
+  const [isSharingOpen, setIsSharingOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isAdminSetupOpen, setIsAdminSetupOpen] = useState(false);
+  const [isAzureSetupDialogOpen, setIsAzureSetupDialogOpen] = useState(false);
+  const [isUserAdminDialogOpen, setIsUserAdminDialogOpen] = useState(false);
   const [isActivityModalOpen, setIsActivityModalOpen] = useState(false);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [isWheelRenameDialogOpen, setIsWheelRenameDialogOpen] = useState(false);
+  const [wheelRenameId, setWheelRenameId] = useState<string | null>(null);
+  const [wheelRenameDraft, setWheelRenameDraft] = useState("");
   const [isTagDialogOpen, setIsTagDialogOpen] = useState(false);
   const [isScheduleDialogOpen, setIsScheduleDialogOpen] = useState(false);
   const [copyNotice, setCopyNotice] = useState("");
@@ -1439,17 +1846,52 @@ export default function Page() {
   const [shares, setShares] = useState<ShareEntry[]>([]);
   const [shareRole, setShareRole] = useState<"VIEWER" | "EDITOR" | "OWNER">("VIEWER");
   const [shareUserEmail, setShareUserEmail] = useState("");
+  const [shareableUsers, setShareableUsers] = useState<ShareableUserOptionModel[]>([]);
+  const [shareUserSelectionEmail, setShareUserSelectionEmail] = useState("");
   const [shareGroupId, setShareGroupId] = useState("");
   const [isSharingBusy, setIsSharingBusy] = useState(false);
   const [isHydratingWheel, setIsHydratingWheel] = useState(false);
+  const [isWheelBusy, setIsWheelBusy] = useState(false);
+  const [isAdminLoading, setIsAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState("");
+  const [adminOverview, setAdminOverview] = useState<AdminOverviewModel | null>(null);
+  const [adminUsers, setAdminUsers] = useState<AdminUserModel[]>([]);
+  const [adminTenants, setAdminTenants] = useState<AdminTenantOptionModel[]>([]);
+  const [activeAdminTenantId, setActiveAdminTenantId] = useState("");
+  const [isAdminUserSaving, setIsAdminUserSaving] = useState(false);
+  const [adminUserEditorMode, setAdminUserEditorMode] = useState<"create" | "edit" | null>(null);
+  const [editingAdminUserId, setEditingAdminUserId] = useState<string | null>(null);
+  const [editingAdminUserName, setEditingAdminUserName] = useState("");
+  const [editingAdminUserEmail, setEditingAdminUserEmail] = useState("");
+  const [editingAdminUserPassword, setEditingAdminUserPassword] = useState("");
+  const [editingAdminUserIsAdmin, setEditingAdminUserIsAdmin] = useState(false);
+  const [editingAdminUserIsDisabled, setEditingAdminUserIsDisabled] = useState(false);
+  const [userAdminFilterQuery, setUserAdminFilterQuery] = useState("");
+  const [userAdminFilterRole, setUserAdminFilterRole] = useState<"ALL" | "ADMIN" | "MEMBER">("ALL");
+  const [userAdminFilterStatus, setUserAdminFilterStatus] = useState<"ALL" | "ACTIVE" | "DISABLED">("ALL");
+  const [adminTenantSettings, setAdminTenantSettings] = useState<AdminTenantSettingsModel | null>(null);
+  const [isAzureSetupSaving, setIsAzureSetupSaving] = useState(false);
+  const [isSmtpSaving, setIsSmtpSaving] = useState(false);
+  const [isSmtpTesting, setIsSmtpTesting] = useState(false);
+  const [userTenants, setUserTenants] = useState<UserTenantMembershipModel[]>([]);
+  const [tenantChooserId, setTenantChooserId] = useState("");
+  const [isTenantChooserOpen, setIsTenantChooserOpen] = useState(false);
+  const [isSwitchingTenant, setIsSwitchingTenant] = useState(false);
+  const [tenantScopeError, setTenantScopeError] = useState("");
   const isHydratingRef = useRef(false);
   const loadedWheelIdRef = useRef<string | null>(null);
   const configSaveTimerRef = useRef<number | null>(null);
   const durationSaveTimerRef = useRef<number | null>(null);
+  const sharingPopoverRef = useRef<HTMLElement | null>(null);
+  const sharingTriggerRef = useRef<HTMLButtonElement | null>(null);
   const settingsPopoverRef = useRef<HTMLElement | null>(null);
   const settingsTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const adminSetupModalRef = useRef<HTMLElement | null>(null);
+  const azureSetupDialogRef = useRef<HTMLElement | null>(null);
+  const userAdminDialogRef = useRef<HTMLElement | null>(null);
   const activityModalRef = useRef<HTMLElement | null>(null);
   const categoryModalRef = useRef<HTMLElement | null>(null);
+  const wheelRenameDialogRef = useRef<HTMLElement | null>(null);
   const activityTagDialogRef = useRef<HTMLElement | null>(null);
   const activityScheduleDialogRef = useRef<HTMLElement | null>(null);
   const wheelFrameRef = useRef<HTMLElement | null>(null);
@@ -1458,7 +1900,8 @@ export default function Page() {
   const tooltipPointRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const tagTooltipTimerRef = useRef<number | null>(null);
   const tagTooltipPointRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const [durationMonths, setDurationMonths] = useState<3 | 6 | 12>(3);
+  const tenantBootstrapRef = useRef(false);
+  const [durationMonths, setDurationMonths] = useState<3 | 6 | 12>(12);
   const [startDate, setStartDate] = useState("2026-01-01");
   const [activeCategoryIds, setActiveCategoryIds] = useState<string[]>(() => RING_TEMPLATES.map((ring) => ring.id));
   const [activeTagKeys, setActiveTagKeys] = useState<string[]>([]);
@@ -1473,6 +1916,19 @@ export default function Page() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newCategoryColor, setNewCategoryColor] = useState("#6da8c7");
   const [editingRingId, setEditingRingId] = useState<string | null>(null);
+  const [azureTenantId, setAzureTenantId] = useState("");
+  const [azureClientId, setAzureClientId] = useState("");
+  const [azureClientSecret, setAzureClientSecret] = useState("");
+  const [azureCopyNotice, setAzureCopyNotice] = useState("");
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpSecure, setSmtpSecure] = useState(false);
+  const [smtpUser, setSmtpUser] = useState("");
+  const [smtpPass, setSmtpPass] = useState("");
+  const [smtpFrom, setSmtpFrom] = useState("");
+  const [smtpReplyTo, setSmtpReplyTo] = useState("");
+  const [smtpTestTo, setSmtpTestTo] = useState("");
+  const [smtpNotice, setSmtpNotice] = useState("");
   const [draftTagIds, setDraftTagIds] = useState<string[]>([]);
   const [newTagLabel, setNewTagLabel] = useState("");
   const [newTagDescription, setNewTagDescription] = useState("");
@@ -1483,7 +1939,7 @@ export default function Page() {
   );
   const [draftReminderEmailsInput, setDraftReminderEmailsInput] = useState("");
   const [draftTitle, setDraftTitle] = useState(UI_TEXT.nb.newActivityTitle);
-  const [draftColor, setDraftColor] = useState(THEME_PRESETS.nordic.rings.marketing.accent);
+  const [draftColor, setDraftColor] = useState(THEME_PRESETS.nordic.ringPalette[0]?.accent ?? "#6da8c7");
   const text = useMemo(() => UI_TEXT[language], [language]);
   const reminderOffsetLabels = useMemo(
     () =>
@@ -1776,6 +2232,80 @@ export default function Page() {
     return [...byStartDate.values()];
   }, [durationMonths, startDate, text.quarterPrefix, text.weekPrefix, windowAnchorMode]);
 
+  const azureCallbackUri = useMemo(() => {
+    if (typeof window === "undefined") {
+      return "http://localhost:3001/api/auth/callback/azure-ad";
+    }
+    const base = window.location.origin.replace(/\/+$/, "");
+    return `${base}/api/auth/callback/azure-ad`;
+  }, []);
+  const currentUserIsSystemAdmin = Boolean(session?.user?.isSystemAdmin);
+  const activeTenantId = session?.user?.activeTenantId ?? null;
+  const currentUserIsTenantAdmin = useMemo(() => {
+    if (!activeTenantId) {
+      return false;
+    }
+    return userTenants.some((membership) => membership.tenantId === activeTenantId && membership.role === "ADMIN");
+  }, [userTenants, activeTenantId]);
+  const canUseAdminSetup = currentUserIsTenantAdmin;
+  const currentRoleLabel = useMemo(() => {
+    if (currentUserIsSystemAdmin && currentUserIsTenantAdmin) {
+      return `${text.roleSystemAdmin} + ${text.roleTenantAdmin}`;
+    }
+    if (currentUserIsSystemAdmin) {
+      return text.roleSystemAdmin;
+    }
+    if (currentUserIsTenantAdmin) {
+      return text.roleTenantAdmin;
+    }
+    if (activeTenantId) {
+      return text.roleTenantMember;
+    }
+    return text.roleNoTenant;
+  }, [
+    activeTenantId,
+    currentUserIsSystemAdmin,
+    currentUserIsTenantAdmin,
+    text.roleNoTenant,
+    text.roleSystemAdmin,
+    text.roleTenantAdmin,
+    text.roleTenantMember
+  ]);
+  const selectedLoginTenant = useMemo(
+    () => loginTenants.find((tenant) => tenant.id === loginTenantId) ?? loginTenants[0] ?? null,
+    [loginTenantId, loginTenants]
+  );
+  const hasLoginTenantSelection = loginTenants.length > 0 && Boolean(selectedLoginTenant);
+  const localProviderEnabled = hasLoginTenantSelection ? selectedLoginTenant?.allowLocalAuth === true : false;
+  const azureProviderEnabled =
+    hasLoginTenantSelection && hasAzureAuth
+      ? selectedLoginTenant?.allowAzureAuth === true && selectedLoginTenant?.azureConfigured === true
+      : false;
+  const activeTenant = useMemo(
+    () => userTenants.find((membership) => membership.tenantId === activeTenantId)?.tenant ?? null,
+    [userTenants, activeTenantId]
+  );
+  const activeAdminTenant = useMemo(
+    () => adminTenants.find((tenant) => tenant.id === activeAdminTenantId) ?? null,
+    [adminTenants, activeAdminTenantId]
+  );
+  const filteredAdminUsers = useMemo(() => {
+    const query = userAdminFilterQuery.trim().toLowerCase();
+    return adminUsers.filter((user) => {
+      const matchesQuery =
+        query.length === 0 ||
+        user.name?.toLowerCase().includes(query) ||
+        user.email?.toLowerCase().includes(query);
+      const matchesRole =
+        userAdminFilterRole === "ALL" ||
+        (userAdminFilterRole === "ADMIN" ? user.isAdmin : !user.isAdmin);
+      const matchesStatus =
+        userAdminFilterStatus === "ALL" ||
+        (userAdminFilterStatus === "ACTIVE" ? !user.isDisabled : user.isDisabled);
+      return Boolean(matchesQuery && matchesRole && matchesStatus);
+    });
+  }, [adminUsers, userAdminFilterQuery, userAdminFilterRole, userAdminFilterStatus]);
+
   async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
     const response = await fetch(input, {
       ...init,
@@ -1800,20 +2330,107 @@ export default function Page() {
     return payload as T;
   }
 
+  async function applyActiveTenant(nextTenantId: string, options?: { persist?: boolean; closeChooser?: boolean }) {
+    const normalizedTenantId = nextTenantId.trim();
+    if (!normalizedTenantId) {
+      return;
+    }
+
+    try {
+      setIsSwitchingTenant(true);
+      setTenantScopeError("");
+      setLoadError("");
+      const updated = await update({
+        activeTenantId: normalizedTenantId
+      });
+      const resolvedActiveTenantId = updated?.user?.activeTenantId ?? null;
+      if (resolvedActiveTenantId !== normalizedTenantId) {
+        throw new Error("Could not activate selected tenant.");
+      }
+
+      if (options?.persist !== false) {
+        window.localStorage.setItem(ACTIVE_TENANT_STORAGE_KEY, normalizedTenantId);
+      }
+      if (options?.closeChooser !== false) {
+        setIsTenantChooserOpen(false);
+      }
+      setTenantChooserId("");
+      loadedWheelIdRef.current = null;
+      setActiveWheelId(null);
+      setShares([]);
+      setActivities([]);
+    } catch (error) {
+      setTenantScopeError(error instanceof Error ? error.message : "Could not switch tenant.");
+    } finally {
+      setIsSwitchingTenant(false);
+    }
+  }
+
+  async function loadUserTenants() {
+    if (status !== "authenticated") {
+      return;
+    }
+
+    const payload = await requestJson<{ activeTenantId: string | null; tenants: UserTenantMembershipModel[] }>("/api/tenants");
+    const memberships = payload.tenants ?? [];
+    setUserTenants(memberships);
+
+    if (memberships.length === 0) {
+      setTenantScopeError("No tenant memberships found for this account.");
+      return;
+    }
+
+    const membershipIds = new Set(memberships.map((membership) => membership.tenantId));
+    const sessionTenantId = payload.activeTenantId ?? activeTenantId;
+    const storedTenantId = window.localStorage.getItem(ACTIVE_TENANT_STORAGE_KEY)?.trim() || "";
+
+    if (memberships.length === 1) {
+      const onlyTenantId = memberships[0]!.tenantId;
+      if (sessionTenantId !== onlyTenantId) {
+        await applyActiveTenant(onlyTenantId, { persist: true, closeChooser: true });
+        return;
+      }
+      window.localStorage.setItem(ACTIVE_TENANT_STORAGE_KEY, onlyTenantId);
+      setIsTenantChooserOpen(false);
+      return;
+    }
+
+    if (storedTenantId && membershipIds.has(storedTenantId) && sessionTenantId !== storedTenantId) {
+      await applyActiveTenant(storedTenantId, { persist: true, closeChooser: true });
+      return;
+    }
+
+    const hasValidSessionTenant = Boolean(sessionTenantId && membershipIds.has(sessionTenantId));
+    if (!hasValidSessionTenant) {
+      const firstTenantId = memberships[0]!.tenantId;
+      await applyActiveTenant(firstTenantId, { persist: true, closeChooser: true });
+      return;
+    }
+
+    if (!storedTenantId && !tenantBootstrapRef.current) {
+      tenantBootstrapRef.current = true;
+      setTenantChooserId(sessionTenantId!);
+      setIsTenantChooserOpen(true);
+    }
+  }
+
   async function createWheel(title?: string) {
     const wheelTitle = title?.trim() || text.wheelCreateDefaultTitle;
     const today = DateTime.now().setZone(TIMEZONE);
-    const alignedStart = alignedWindowStart(today, durationMonths).toISODate() ?? today.toISODate() ?? "2026-01-01";
+    const defaultDuration: 12 = 12;
+    const alignedStart = alignedWindowStart(today, defaultDuration).toISODate() ?? today.toISODate() ?? "2026-01-01";
+    const defaultAccent = THEME_PRESETS[themeId].ringPalette[0]?.accent ?? "#6da8c7";
+    const defaultRing = createDefaultRingTemplate(language, defaultAccent);
     const created = await requestJson<{ wheel: WheelSummary }>("/api/wheels", {
       method: "POST",
       body: JSON.stringify({
         title: wheelTitle,
         timezone: TIMEZONE,
         startDate: `${alignedStart}T00:00:00`,
-        durationMonths,
+        durationMonths: defaultDuration,
         config: {
-          ringTemplates,
-          tags,
+          ringTemplates: [defaultRing],
+          tags: INITIAL_TAGS,
           themeId,
           language,
           seamShadowEnabled,
@@ -1853,6 +2470,34 @@ export default function Page() {
     }
   }
 
+  async function loadShareableUsers() {
+    if (status !== "authenticated" || !activeTenantId) {
+      setShareableUsers([]);
+      setShareUserSelectionEmail("");
+      setShareUserEmail("");
+      return;
+    }
+
+    try {
+      const payload = await requestJson<{ users: ShareableUserOptionModel[] }>("/api/tenant/users");
+      const nextUsers = payload.users ?? [];
+      setShareableUsers(nextUsers);
+      setShareUserSelectionEmail((previous) => {
+        if (previous && nextUsers.some((user) => user.email === previous)) {
+          setShareUserEmail(previous);
+          return previous;
+        }
+        const firstEmail = nextUsers[0]?.email ?? "";
+        setShareUserEmail(firstEmail);
+        return firstEmail;
+      });
+    } catch {
+      setShareableUsers([]);
+      setShareUserSelectionEmail("");
+      setShareUserEmail("");
+    }
+  }
+
   async function loadWheelData(wheelId: string) {
     setIsHydratingWheel(true);
     isHydratingRef.current = true;
@@ -1869,9 +2514,6 @@ export default function Page() {
       const parsedConfig = parseWheelConfig(wheel.config);
       const nextRingTemplates = parsedConfig.ringTemplates && parsedConfig.ringTemplates.length > 0 ? parsedConfig.ringTemplates : RING_TEMPLATES;
       const nextTags = parsedConfig.tags && parsedConfig.tags.length > 0 ? parsedConfig.tags : INITIAL_TAGS;
-      const nextDuration = [3, 6, 12].includes(wheel.durationMonths)
-        ? (wheel.durationMonths as 3 | 6 | 12)
-        : 12;
       const nextStart = DateTime.fromISO(wheel.startDate, { zone: TIMEZONE }).toISODate() ?? startDate;
 
       setRingTemplates(nextRingTemplates);
@@ -1880,7 +2522,7 @@ export default function Page() {
       setThemeId(parsedConfig.themeId ?? "nordic");
       setSeamShadowEnabled(parsedConfig.seamShadowEnabled ?? true);
       setWindowAnchorMode(parsedConfig.windowAnchorMode ?? "dynamic_today");
-      setDurationMonths(nextDuration);
+      setDurationMonths(12);
       setStartDate(nextStart);
       setActiveCategoryIds(nextRingTemplates.map((ring) => ring.id));
       setActiveTagKeys([]);
@@ -1920,6 +2562,7 @@ export default function Page() {
 
   async function createWheelFromUi() {
     try {
+      setIsWheelBusy(true);
       const proposed = window.prompt(text.wheelCreatePrompt, text.wheelCreateDefaultTitle);
       if (proposed === null) {
         return;
@@ -1929,11 +2572,91 @@ export default function Page() {
       setActiveWheelId(created.id);
     } catch {
       setLoadError(text.wheelLoadFailed);
+    } finally {
+      setIsWheelBusy(false);
+    }
+  }
+
+  function openWheelRenameDialog(wheelId: string) {
+    const currentTitle = wheels.find((wheel) => wheel.id === wheelId)?.title?.trim() || text.wheelCreateDefaultTitle;
+    setWheelRenameId(wheelId);
+    setWheelRenameDraft(currentTitle);
+    setIsWheelRenameDialogOpen(true);
+  }
+
+  function closeWheelRenameDialog() {
+    setIsWheelRenameDialogOpen(false);
+    setWheelRenameId(null);
+    setWheelRenameDraft("");
+  }
+
+  async function saveWheelRenameFromUi() {
+    if (!wheelRenameId) {
+      return;
+    }
+
+    const currentTitle = wheels.find((wheel) => wheel.id === wheelRenameId)?.title?.trim() || text.wheelCreateDefaultTitle;
+    const nextTitle = wheelRenameDraft.trim();
+    if (!nextTitle) {
+      return;
+    }
+    if (nextTitle === currentTitle) {
+      closeWheelRenameDialog();
+      return;
+    }
+
+    try {
+      setIsWheelBusy(true);
+      setSaveError("");
+      const payload = await requestJson<{ wheel: WheelSummary }>(`/api/wheels/${wheelRenameId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title: nextTitle
+        })
+      });
+      setWheels((prev) => prev.map((wheel) => (wheel.id === payload.wheel.id ? { ...wheel, ...payload.wheel } : wheel)));
+      closeWheelRenameDialog();
+    } catch (error) {
+      setSaveError(error instanceof Error && error.message ? error.message : text.wheelSaveFailed);
+    } finally {
+      setIsWheelBusy(false);
+    }
+  }
+
+  async function deleteWheelFromUi(wheelId: string) {
+    if (!wheelId) {
+      return;
+    }
+
+    const confirmed = window.confirm(text.deleteWheelConfirm);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsWheelBusy(true);
+      setSaveError("");
+      await requestJson<{ removed: number }>(`/api/wheels/${wheelId}`, {
+        method: "DELETE"
+      });
+      const preferredWheelId = activeWheelId && activeWheelId !== wheelId ? activeWheelId : undefined;
+      if (activeWheelId === wheelId) {
+        setActiveWheelId(null);
+      }
+      if (wheelRenameId === wheelId) {
+        closeWheelRenameDialog();
+      }
+      await loadWheelsList(preferredWheelId);
+    } catch (error) {
+      setSaveError(error instanceof Error && error.message ? error.message : text.wheelSaveFailed);
+    } finally {
+      setIsWheelBusy(false);
     }
   }
 
   async function shareWithUser() {
-    if (!activeWheelId || !shareUserEmail.trim()) {
+    const selectedEmail = (shareUserSelectionEmail || shareUserEmail).trim();
+    if (!activeWheelId || !selectedEmail) {
       return;
     }
     try {
@@ -1944,13 +2667,15 @@ export default function Page() {
         body: JSON.stringify({
           targetType: "USER",
           role: shareRole,
-          userEmail: shareUserEmail.trim()
+          userEmail: selectedEmail
         })
       });
+      setShareUserSelectionEmail("");
       setShareUserEmail("");
+      await loadShareableUsers();
       await loadShares(activeWheelId);
-    } catch {
-      setSaveError(text.wheelSaveFailed);
+    } catch (error) {
+      setSaveError(error instanceof Error && error.message ? error.message : text.wheelSaveFailed);
     } finally {
       setIsSharingBusy(false);
     }
@@ -2012,6 +2737,422 @@ export default function Page() {
     } finally {
       setIsSharingBusy(false);
     }
+  }
+
+  async function loadAdminTenantSettings(tenantId: string) {
+    if (!tenantId) {
+      setAdminTenantSettings(null);
+      setAzureTenantId("");
+      setAzureClientId("");
+      setAzureClientSecret("");
+      setSmtpHost("");
+      setSmtpPort("587");
+      setSmtpSecure(false);
+      setSmtpUser("");
+      setSmtpPass("");
+      setSmtpFrom("");
+      setSmtpReplyTo("");
+      setSmtpTestTo("");
+      setSmtpNotice("");
+      return;
+    }
+
+    const payload = await requestJson<{ settings: AdminTenantSettingsModel }>(
+      `/api/admin/tenant?tenantId=${encodeURIComponent(tenantId)}`
+    );
+    const settings = payload.settings;
+    setAdminTenantSettings(settings);
+    setAzureTenantId(settings.azureTenantId ?? "");
+    setAzureClientId(settings.azureClientId ?? "");
+    setAzureClientSecret(settings.azureClientSecret ?? "");
+    setSmtpHost(settings.smtpHost ?? "");
+    setSmtpPort(settings.smtpPort ? String(settings.smtpPort) : "");
+    setSmtpSecure(settings.smtpSecure ?? false);
+    setSmtpUser(settings.smtpUser ?? "");
+    setSmtpPass(settings.smtpPass ?? "");
+    setSmtpFrom(settings.smtpFrom ?? "");
+    setSmtpReplyTo(settings.smtpReplyTo ?? "");
+    setSmtpTestTo((session?.user?.email ?? settings.supportEmail ?? "").trim());
+    setSmtpNotice("");
+  }
+
+  async function saveAzureSetupForTenant() {
+    if (!canUseAdminSetup || !activeAdminTenantId) {
+      return;
+    }
+
+    try {
+      setIsAzureSetupSaving(true);
+      const payload = await requestJson<{ settings: AdminTenantSettingsModel }>(
+        `/api/admin/tenant?tenantId=${encodeURIComponent(activeAdminTenantId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            allowAzureAuth: true,
+            azureTenantId: azureTenantId.trim(),
+            azureClientId: azureClientId.trim(),
+            azureClientSecret: azureClientSecret.trim()
+          })
+        }
+      );
+      setAdminTenantSettings(payload.settings);
+      setAzureCopyNotice(text.azureEnvCopied);
+    } catch {
+      setAzureCopyNotice(text.wheelSaveFailed);
+    } finally {
+      setIsAzureSetupSaving(false);
+    }
+  }
+
+  async function saveSmtpSetupForTenant() {
+    if (!canUseAdminSetup || !activeAdminTenantId) {
+      return;
+    }
+
+    try {
+      setIsSmtpSaving(true);
+      setAdminError("");
+      setSmtpNotice("");
+      const payload = await requestJson<{ settings: AdminTenantSettingsModel }>(
+        `/api/admin/tenant?tenantId=${encodeURIComponent(activeAdminTenantId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            smtpHost: smtpHost.trim(),
+            smtpPort: smtpPort.trim(),
+            smtpSecure,
+            smtpUser: smtpUser.trim(),
+            smtpPass: smtpPass.trim(),
+            smtpFrom: smtpFrom.trim(),
+            smtpReplyTo: smtpReplyTo.trim()
+          })
+        }
+      );
+      const settings = payload.settings;
+      setAdminTenantSettings(settings);
+      setSmtpHost(settings.smtpHost ?? "");
+      setSmtpPort(settings.smtpPort ? String(settings.smtpPort) : "");
+      setSmtpSecure(settings.smtpSecure ?? false);
+      setSmtpUser(settings.smtpUser ?? "");
+      setSmtpPass(settings.smtpPass ?? "");
+      setSmtpFrom(settings.smtpFrom ?? "");
+      setSmtpReplyTo(settings.smtpReplyTo ?? "");
+      setSmtpNotice(text.smtpSaved);
+    } catch (error) {
+      setAdminError(error instanceof Error && error.message ? error.message : text.wheelSaveFailed);
+    } finally {
+      setIsSmtpSaving(false);
+    }
+  }
+
+  async function sendSmtpTestEmail() {
+    if (!canUseAdminSetup || !activeAdminTenantId || !smtpTestTo.trim()) {
+      return;
+    }
+
+    try {
+      setIsSmtpTesting(true);
+      setAdminError("");
+      setSmtpNotice("");
+      await requestJson<{ sent: boolean; to: string }>(`/api/admin/tenant/test-email?tenantId=${encodeURIComponent(activeAdminTenantId)}`, {
+        method: "POST",
+        body: JSON.stringify({
+          to: smtpTestTo.trim(),
+          smtpHost: smtpHost.trim(),
+          smtpPort: smtpPort.trim(),
+          smtpSecure,
+          smtpUser: smtpUser.trim(),
+          smtpPass: smtpPass.trim(),
+          smtpFrom: smtpFrom.trim(),
+          smtpReplyTo: smtpReplyTo.trim()
+        })
+      });
+      setSmtpNotice(text.smtpTestSent);
+    } catch (error) {
+      setAdminError(error instanceof Error && error.message ? error.message : text.wheelSaveFailed);
+    } finally {
+      setIsSmtpTesting(false);
+    }
+  }
+
+  async function loadAdminTenantContext(tenantId: string) {
+    if (!tenantId) {
+      setAdminUsers([]);
+      setEditingAdminUserId(null);
+      return;
+    }
+
+    const usersPayload = await requestJson<{ users: AdminUserModel[] }>(
+      `/api/admin/users?tenantId=${encodeURIComponent(tenantId)}`
+    );
+    const nextUsers = usersPayload.users ?? [];
+    setAdminUsers(nextUsers);
+    if (editingAdminUserId) {
+      const refreshed = nextUsers.find((user) => user.id === editingAdminUserId);
+      if (refreshed) {
+        setEditingAdminUserName(refreshed.name ?? "");
+        setEditingAdminUserEmail(refreshed.email ?? "");
+        setEditingAdminUserIsAdmin(refreshed.isAdmin);
+        setEditingAdminUserIsDisabled(refreshed.isDisabled);
+      } else {
+        setEditingAdminUserId(null);
+        setEditingAdminUserName("");
+        setEditingAdminUserEmail("");
+        setEditingAdminUserPassword("");
+        setEditingAdminUserIsAdmin(false);
+        setEditingAdminUserIsDisabled(false);
+      }
+    }
+  }
+
+  async function loadAdminData() {
+    if (!canUseAdminSetup) {
+      return;
+    }
+
+    try {
+      setIsAdminLoading(true);
+      setAdminError("");
+      const tenantsPayload = await requestJson<{ tenants: AdminTenantOptionModel[] }>("/api/admin/tenants");
+      const tenantOptions = tenantsPayload.tenants ?? [];
+      setAdminTenants(tenantOptions);
+      const preferredTenantId = tenantOptions.some((tenant) => tenant.id === activeAdminTenantId)
+        ? activeAdminTenantId
+        : tenantOptions.some((tenant) => tenant.id === activeTenantId)
+          ? (activeTenantId ?? "")
+          : (tenantOptions[0]?.id ?? "");
+      setActiveAdminTenantId(preferredTenantId);
+
+      if (!preferredTenantId) {
+        setAdminUsers([]);
+        setAdminOverview(null);
+        await loadAdminTenantSettings("");
+        setAdminError(text.adminTenantUnavailable);
+        return;
+      }
+
+      const [overviewPayload] = await Promise.all([
+        requestJson<{ overview: AdminOverviewModel }>(
+          `/api/admin/overview?tenantId=${encodeURIComponent(preferredTenantId)}`
+        ),
+        loadAdminTenantContext(preferredTenantId),
+        loadAdminTenantSettings(preferredTenantId)
+      ]);
+      setAdminOverview(overviewPayload.overview);
+    } catch {
+      setAdminError(text.adminLoadFailed);
+    } finally {
+      setIsAdminLoading(false);
+    }
+  }
+
+  function openAdminUserEditor(user: AdminUserModel) {
+    setAdminUserEditorMode("edit");
+    setEditingAdminUserId(user.id);
+    setEditingAdminUserName(user.name ?? "");
+    setEditingAdminUserEmail(user.email ?? "");
+    setEditingAdminUserPassword("");
+    setEditingAdminUserIsAdmin(user.isAdmin);
+    setEditingAdminUserIsDisabled(user.isDisabled);
+  }
+
+  function openCreateAdminUserEditor() {
+    setAdminUserEditorMode("create");
+    setEditingAdminUserId(null);
+    setEditingAdminUserName("");
+    setEditingAdminUserEmail("");
+    setEditingAdminUserPassword("");
+    setEditingAdminUserIsAdmin(false);
+    setEditingAdminUserIsDisabled(false);
+  }
+
+  function closeAdminUserEditor() {
+    setAdminUserEditorMode(null);
+    setEditingAdminUserId(null);
+    setEditingAdminUserName("");
+    setEditingAdminUserEmail("");
+    setEditingAdminUserPassword("");
+    setEditingAdminUserIsAdmin(false);
+    setEditingAdminUserIsDisabled(false);
+  }
+
+  async function refreshAdminOverviewForTenant(tenantId: string) {
+    const payload = await requestJson<{ overview: AdminOverviewModel }>(
+      `/api/admin/overview?tenantId=${encodeURIComponent(tenantId)}`
+    );
+    setAdminOverview(payload.overview);
+  }
+
+  async function saveTenantUserEdits() {
+    if (!canUseAdminSetup || !activeAdminTenantId || !adminUserEditorMode) {
+      return;
+    }
+
+    try {
+      setIsAdminUserSaving(true);
+      setAdminError("");
+
+      if (adminUserEditorMode === "create") {
+        await requestJson<{ user: AdminUserModel }>(`/api/admin/users?tenantId=${encodeURIComponent(activeAdminTenantId)}`, {
+          method: "POST",
+          body: JSON.stringify({
+            name: editingAdminUserName.trim(),
+            email: editingAdminUserEmail.trim().toLowerCase(),
+            password: editingAdminUserPassword,
+            isAdmin: editingAdminUserIsAdmin
+          })
+        });
+      } else if (editingAdminUserId) {
+        await requestJson<{ user: AdminUserModel }>(
+          `/api/admin/users/${editingAdminUserId}?tenantId=${encodeURIComponent(activeAdminTenantId)}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify({
+              name: editingAdminUserName.trim(),
+              email: editingAdminUserEmail.trim().toLowerCase(),
+              password: editingAdminUserPassword,
+              isAdmin: editingAdminUserIsAdmin,
+              isDisabled: editingAdminUserIsDisabled
+            })
+          }
+        );
+      }
+
+      setEditingAdminUserPassword("");
+      if (adminUserEditorMode === "create") {
+        closeAdminUserEditor();
+      }
+      await Promise.all([loadAdminTenantContext(activeAdminTenantId), refreshAdminOverviewForTenant(activeAdminTenantId)]);
+    } catch (error) {
+      setAdminError(error instanceof Error && error.message ? error.message : text.wheelSaveFailed);
+    } finally {
+      setIsAdminUserSaving(false);
+    }
+  }
+
+  async function toggleTenantUserDisabled(user: AdminUserModel) {
+    if (!canUseAdminSetup || !activeAdminTenantId) {
+      return;
+    }
+
+    try {
+      setIsAdminUserSaving(true);
+      setAdminError("");
+      await requestJson<{ user: AdminUserModel }>(
+        `/api/admin/users/${user.id}?tenantId=${encodeURIComponent(activeAdminTenantId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            isDisabled: !user.isDisabled
+          })
+        }
+      );
+      await Promise.all([loadAdminTenantContext(activeAdminTenantId), refreshAdminOverviewForTenant(activeAdminTenantId)]);
+    } catch (error) {
+      setAdminError(error instanceof Error && error.message ? error.message : text.wheelSaveFailed);
+    } finally {
+      setIsAdminUserSaving(false);
+    }
+  }
+
+  async function deleteTenantUser(user: AdminUserModel) {
+    if (!canUseAdminSetup || !activeAdminTenantId) {
+      return;
+    }
+    if (!window.confirm(text.adminDeleteUserConfirm)) {
+      return;
+    }
+
+    try {
+      setIsAdminUserSaving(true);
+      setAdminError("");
+      await requestJson<{ removed: number; deletedUser: boolean }>(
+        `/api/admin/users/${user.id}?tenantId=${encodeURIComponent(activeAdminTenantId)}`,
+        {
+          method: "DELETE"
+        }
+      );
+      if (editingAdminUserId === user.id) {
+        closeAdminUserEditor();
+      }
+      await Promise.all([loadAdminTenantContext(activeAdminTenantId), refreshAdminOverviewForTenant(activeAdminTenantId)]);
+    } catch (error) {
+      setAdminError(error instanceof Error && error.message ? error.message : text.wheelSaveFailed);
+    } finally {
+      setIsAdminUserSaving(false);
+    }
+  }
+
+  async function onSubmitLocalAuth(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedLoginTenant) {
+      setLocalAuthError(text.loginTenantUnavailable);
+      return;
+    }
+    const email = localEmail.trim().toLowerCase();
+    const password = localPassword;
+    const name = localName.trim();
+
+    if (!email || !password) {
+      setLocalAuthError(localAuthMode === "login" ? text.localAuthFailed : text.localRegisterFailed);
+      return;
+    }
+
+    setLocalAuthBusy(true);
+    setLocalAuthError("");
+
+    try {
+      const preferredTenantId = (loginTenantId || selectedLoginTenant?.id || "").trim();
+      if (preferredTenantId) {
+        window.localStorage.setItem(ACTIVE_TENANT_STORAGE_KEY, preferredTenantId);
+      }
+
+      if (localAuthMode === "register") {
+        const response = await fetch("/api/auth/local/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email,
+            password,
+            name,
+            tenantId: preferredTenantId
+          })
+        });
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          setLocalAuthError(payload?.error ?? text.localRegisterFailed);
+          return;
+        }
+      }
+
+      const result = await signIn("credentials", {
+        redirect: false,
+        email,
+        password
+      });
+
+      if (!result || result.error) {
+        setLocalAuthError(text.localAuthFailed);
+        return;
+      }
+
+      setLocalPassword("");
+      if (localAuthMode === "register") {
+        setLocalName("");
+      }
+    } catch {
+      setLocalAuthError(localAuthMode === "login" ? text.localAuthFailed : text.localRegisterFailed);
+    } finally {
+      setLocalAuthBusy(false);
+    }
+  }
+
+  async function onAzureSignIn() {
+    const preferredTenantId = (loginTenantId || selectedLoginTenant?.id || "").trim();
+    if (preferredTenantId) {
+      window.localStorage.setItem(ACTIVE_TENANT_STORAGE_KEY, preferredTenantId);
+    }
+    await signIn("azure-ad");
   }
 
   function showAllCategories() {
@@ -2384,6 +3525,49 @@ export default function Page() {
     closeCategoryModal();
   }
 
+  async function deleteRing(ringId: string) {
+    if (ringTemplates.length <= 1) {
+      setSaveError(text.minimumOneRing);
+      return;
+    }
+
+    const confirmed = window.confirm(text.deleteRingConfirm);
+    if (!confirmed) {
+      return;
+    }
+
+    const affectedActivities = activities.filter((activity) => activity.ringId === ringId);
+
+    try {
+      setSaveError("");
+      setIsWheelBusy(true);
+      if (affectedActivities.length > 0) {
+        await Promise.all(
+          affectedActivities.map((activity) =>
+            requestJson<{ removed: number }>(`/api/activities/${activity.id}`, {
+              method: "DELETE"
+            })
+          )
+        );
+      }
+
+      setActivities((prev) => prev.filter((activity) => activity.ringId !== ringId));
+      setRingTemplates((prev) => prev.filter((ring) => ring.id !== ringId));
+      setActiveCategoryIds((prev) => prev.filter((id) => id !== ringId));
+
+      if (selectedSlot?.ringId === ringId) {
+        setSelectedSlot(null);
+      }
+      if (selectedActivityId && affectedActivities.some((activity) => activity.id === selectedActivityId)) {
+        setSelectedActivityId(null);
+      }
+    } catch {
+      setSaveError(text.wheelSaveFailed);
+    } finally {
+      setIsWheelBusy(false);
+    }
+  }
+
   function openCreateActivityModal() {
     const defaultRingId = selectedSlot?.ringId ?? visibleRings[0]?.id;
     if (!defaultRingId) {
@@ -2408,7 +3592,7 @@ export default function Page() {
     setIsScheduleDialogOpen(false);
     setDraftSchedule(createDefaultSchedule(toIso(end) ?? `${startDate}T00:00:00`));
     setDraftReminderEmailsInput("");
-    setDraftColor(ring?.accent ?? visibleRings[0]?.accent ?? THEME_PRESETS.nordic.rings.marketing.accent);
+    setDraftColor(ring?.accent ?? visibleRings[0]?.accent ?? THEME_PRESETS.nordic.ringPalette[0]?.accent ?? "#6da8c7");
     setIsActivityModalOpen(true);
   }
 
@@ -2437,61 +3621,6 @@ export default function Page() {
       body: JSON.stringify(buildSchedulePayload(schedule))
     });
     return normalizeActivityScheduleFromApi(payload.schedule, fallbackEndAt);
-  }
-
-  async function planAgain() {
-    if (!activeWheelId) {
-      return;
-    }
-    const windowStart = DateTime.fromJSDate(scale.startAt, { zone: TIMEZONE });
-    const windowEnd = DateTime.fromJSDate(scale.endAt, { zone: TIMEZONE });
-
-    const candidates = activities.filter((activity) => {
-      const start = parseIso(activity.startAt);
-      const end = parseIso(activity.endAt);
-      return end > windowStart && start < windowEnd;
-    });
-
-    if (candidates.length === 0) {
-      return;
-    }
-
-    try {
-      setSaveError("");
-      const created: ActivityModel[] = [];
-      for (const activity of candidates) {
-        const shiftedStart = parseIso(activity.startAt).plus({ months: durationMonths });
-        const shiftedEnd = parseIso(activity.endAt).plus({ months: durationMonths });
-        const createdPayload = await requestJson<{ activity: ApiActivity }>(`/api/wheels/${activeWheelId}/activities`, {
-          method: "POST",
-          body: JSON.stringify({
-            ringId: activity.ringId,
-            title: activity.title,
-            color: activity.color,
-            tags: activity.tags,
-            startAt: toIso(shiftedStart) ?? activity.startAt,
-            endAt: toIso(shiftedEnd) ?? activity.endAt
-          })
-        });
-
-        const normalized = normalizeActivityFromApi(createdPayload.activity);
-        if (activity.schedule) {
-          const scheduleTz = activity.schedule.timezone || TIMEZONE;
-          const parsedDeadline = DateTime.fromFormat(activity.schedule.deadlineAt, "yyyy-LL-dd'T'HH:mm", { zone: scheduleTz });
-          const shiftedSchedule: ActivityScheduleDraft = {
-            ...activity.schedule,
-            deadlineAt: parsedDeadline.isValid
-              ? parsedDeadline.plus({ months: durationMonths }).toFormat("yyyy-LL-dd'T'HH:mm")
-              : activity.schedule.deadlineAt
-          };
-          normalized.schedule = await persistActivitySchedule(normalized.id, shiftedSchedule, normalized.endAt);
-        }
-        created.push(normalized);
-      }
-      setActivities((prev) => [...prev, ...created]);
-    } catch {
-      setSaveError(text.wheelSaveFailed);
-    }
   }
 
   async function copyVisibleWheel() {
@@ -2718,7 +3847,7 @@ export default function Page() {
     setIsScheduleDialogOpen(false);
     setDraftSchedule(createDefaultSchedule(toIso(snappedSlot.end) ?? `${startDate}T00:00:00`));
     setDraftReminderEmailsInput("");
-    setDraftColor(ring?.accent ?? visibleRings[0]?.accent ?? THEME_PRESETS.nordic.rings.marketing.accent);
+    setDraftColor(ring?.accent ?? visibleRings[0]?.accent ?? THEME_PRESETS.nordic.ringPalette[0]?.accent ?? "#6da8c7");
     setIsActivityModalOpen(true);
   }
 
@@ -2855,7 +3984,15 @@ export default function Page() {
       setWheels([]);
       setActiveWheelId(null);
       setShares([]);
+      setUserTenants([]);
+      setTenantChooserId("");
+      setIsTenantChooserOpen(false);
+      setTenantScopeError("");
+      tenantBootstrapRef.current = false;
       loadedWheelIdRef.current = null;
+      return;
+    }
+    if (isSwitchingTenant) {
       return;
     }
 
@@ -2863,6 +4000,13 @@ export default function Page() {
     (async () => {
       try {
         setLoadError("");
+        await loadUserTenants();
+        if (disposed) {
+          return;
+        }
+        if (isTenantChooserOpen || !activeTenantId) {
+          return;
+        }
         await loadWheelsList();
       } catch {
         if (!disposed) {
@@ -2873,6 +4017,83 @@ export default function Page() {
 
     return () => {
       disposed = true;
+    };
+  }, [status, activeTenantId, isTenantChooserOpen, isSwitchingTenant]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || isSwitchingTenant || !activeTenantId) {
+      setShareableUsers([]);
+      setShareUserSelectionEmail("");
+      setShareUserEmail("");
+      return;
+    }
+
+    let disposed = false;
+    (async () => {
+      await loadShareableUsers();
+      if (disposed) {
+        return;
+      }
+    })();
+
+    return () => {
+      disposed = true;
+    };
+  }, [status, activeTenantId, isSwitchingTenant]);
+
+  useEffect(() => {
+    if (status === "loading" || status === "authenticated") {
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const providers = await getProviders();
+        if (cancelled) {
+          return;
+        }
+        setHasAzureAuth(Boolean(providers?.["azure-ad"]));
+      } catch {
+        if (!cancelled) {
+          setHasAzureAuth(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
+
+  useEffect(() => {
+    if (status === "loading" || status === "authenticated") {
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const payload = await requestJson<{ tenants: PublicTenantLoginOptionModel[] }>("/api/public/tenants");
+        if (cancelled) {
+          return;
+        }
+
+        const options = Array.isArray(payload.tenants) ? payload.tenants : [];
+        setLoginTenants(options);
+        const storedTenantId = window.localStorage.getItem(ACTIVE_TENANT_STORAGE_KEY)?.trim() || "";
+        const preferred = options.find((tenant) => tenant.id === storedTenantId) ?? options[0] ?? null;
+        setLoginTenantId(preferred?.id ?? "");
+      } catch {
+        if (!cancelled) {
+          setLoginTenants([]);
+          setLoginTenantId("");
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
     };
   }, [status]);
 
@@ -3098,6 +4319,14 @@ export default function Page() {
     return () => window.clearTimeout(timer);
   }, [copyNotice]);
 
+  useEffect(() => {
+    if (!azureCopyNotice) {
+      return;
+    }
+    const timer = window.setTimeout(() => setAzureCopyNotice(""), 1800);
+    return () => window.clearTimeout(timer);
+  }, [azureCopyNotice]);
+
   useEffect(
     () => () => {
       clearTooltipTimer();
@@ -3123,6 +4352,41 @@ export default function Page() {
   }, [isActivityModalOpen]);
 
   useEffect(() => {
+    if (!isSharingOpen) {
+      return;
+    }
+
+    function onPointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (sharingPopoverRef.current?.contains(target)) {
+        return;
+      }
+      if (sharingTriggerRef.current?.contains(target)) {
+        return;
+      }
+      setIsSharingOpen(false);
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsSharingOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isSharingOpen]);
+
+  useEffect(() => {
     if (!isSettingsOpen) {
       return;
     }
@@ -3138,11 +4402,32 @@ export default function Page() {
       if (settingsTriggerRef.current?.contains(target)) {
         return;
       }
+      if (isAdminSetupOpen && adminSetupModalRef.current?.contains(target)) {
+        return;
+      }
+      if (isUserAdminDialogOpen && userAdminDialogRef.current?.contains(target)) {
+        return;
+      }
+      if (isAzureSetupDialogOpen && azureSetupDialogRef.current?.contains(target)) {
+        return;
+      }
       setIsSettingsOpen(false);
     }
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        if (isAzureSetupDialogOpen) {
+          return;
+        }
+        if (isUserAdminDialogOpen) {
+          closeAdminUserEditor();
+          setIsUserAdminDialogOpen(false);
+          return;
+        }
+        if (isAdminSetupOpen) {
+          setIsAdminSetupOpen(false);
+          return;
+        }
         setIsSettingsOpen(false);
       }
     }
@@ -3155,7 +4440,163 @@ export default function Page() {
       document.removeEventListener("touchstart", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [isSettingsOpen]);
+  }, [isAdminSetupOpen, isAzureSetupDialogOpen, isSettingsOpen, isUserAdminDialogOpen]);
+
+  useEffect(() => {
+    if (!isAdminSetupOpen) {
+      setIsAzureSetupDialogOpen(false);
+      closeAdminUserEditor();
+      setIsUserAdminDialogOpen(false);
+      return;
+    }
+
+    function onPointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (adminSetupModalRef.current?.contains(target)) {
+        return;
+      }
+      if (isUserAdminDialogOpen && userAdminDialogRef.current?.contains(target)) {
+        return;
+      }
+      if (isAzureSetupDialogOpen && azureSetupDialogRef.current?.contains(target)) {
+        return;
+      }
+      setIsAdminSetupOpen(false);
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        if (isAzureSetupDialogOpen) {
+          return;
+        }
+        if (isUserAdminDialogOpen) {
+          closeAdminUserEditor();
+          setIsUserAdminDialogOpen(false);
+          return;
+        }
+        setIsAdminSetupOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isAdminSetupOpen, isAzureSetupDialogOpen, isUserAdminDialogOpen]);
+
+  useEffect(() => {
+    if (!isUserAdminDialogOpen) {
+      closeAdminUserEditor();
+      return;
+    }
+
+    function onPointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (userAdminDialogRef.current?.contains(target)) {
+        return;
+      }
+      closeAdminUserEditor();
+      setIsUserAdminDialogOpen(false);
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        closeAdminUserEditor();
+        setIsUserAdminDialogOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isUserAdminDialogOpen]);
+
+  useEffect(() => {
+    const hasModalOpen =
+      isSettingsOpen ||
+      isSharingOpen ||
+      isTenantChooserOpen ||
+      isAdminSetupOpen ||
+      isAzureSetupDialogOpen ||
+      isUserAdminDialogOpen ||
+      isActivityModalOpen ||
+      isCategoryModalOpen ||
+      isWheelRenameDialogOpen ||
+      isTagDialogOpen ||
+      isScheduleDialogOpen;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+
+    if (hasModalOpen) {
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+    }
+
+    return () => {
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [
+    isSettingsOpen,
+    isSharingOpen,
+    isTenantChooserOpen,
+    isAdminSetupOpen,
+    isAzureSetupDialogOpen,
+    isUserAdminDialogOpen,
+    isActivityModalOpen,
+    isCategoryModalOpen,
+    isWheelRenameDialogOpen,
+    isTagDialogOpen,
+    isScheduleDialogOpen
+  ]);
+
+  useEffect(() => {
+    if (!isAzureSetupDialogOpen) {
+      return;
+    }
+
+    function onPointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (azureSetupDialogRef.current?.contains(target)) {
+        return;
+      }
+      setIsAzureSetupDialogOpen(false);
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsAzureSetupDialogOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isAzureSetupDialogOpen]);
 
   useEffect(() => {
     if (!isActivityModalOpen) {
@@ -3303,6 +4744,38 @@ export default function Page() {
     };
   }, [isCategoryModalOpen]);
 
+  useEffect(() => {
+    if (!isWheelRenameDialogOpen) {
+      return;
+    }
+
+    function onPointerDown(event: MouseEvent | TouchEvent) {
+      const target = event.target as Node | null;
+      if (!target) {
+        return;
+      }
+      if (wheelRenameDialogRef.current?.contains(target)) {
+        return;
+      }
+      closeWheelRenameDialog();
+    }
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        closeWheelRenameDialog();
+      }
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("touchstart", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("touchstart", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [isWheelRenameDialogOpen]);
+
   if (status === "loading") {
     return (
       <main className="wheel-page-auth">
@@ -3316,12 +4789,142 @@ export default function Page() {
   if (status !== "authenticated") {
     return (
       <main className="wheel-page-auth">
-        <section className="auth-card">
-          <h1>Aarshjul</h1>
-          <p>{text.authRequired}</p>
-          <button type="button" onClick={() => signIn("azure-ad")}>
-            {text.signIn}
-          </button>
+        <section className="auth-card auth-card-modern">
+          <header className="auth-brand-row">
+            <span className="auth-brand-mark" aria-hidden>
+              <svg viewBox="0 0 64 64" role="presentation" focusable="false">
+                <circle cx="32" cy="32" r="28" fill="#0a1135" />
+                <circle cx="32" cy="12" r="4" fill="#ffffff" />
+                <circle cx="50" cy="20" r="4" fill="#ffffff" />
+                <circle cx="54" cy="36" r="4" fill="#ffffff" />
+                <circle cx="42" cy="50" r="4" fill="#ffffff" />
+                <circle cx="22" cy="52" r="4" fill="#ffffff" />
+                <circle cx="10" cy="40" r="4" fill="#ffffff" />
+                <circle cx="10" cy="24" r="4" fill="#ffffff" />
+                <circle cx="20" cy="14" r="4" fill="#ffffff" />
+                <circle cx="32" cy="32" r="7" fill="#ffffff" />
+              </svg>
+            </span>
+            <h1>AARSHJUL</h1>
+          </header>
+          <p className="auth-subtitle">{text.authRequired}</p>
+          <label className="auth-tenant-picker">
+            <span>{text.loginTenantLabel}</span>
+            <select
+              value={loginTenantId}
+              onChange={(event) => {
+                setLoginTenantId(event.target.value);
+                setLocalAuthError("");
+              }}
+              disabled={loginTenants.length === 0}
+            >
+              {loginTenants.map((tenant) => (
+                <option key={tenant.id} value={tenant.id}>
+                  {tenant.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {loginTenants.length === 0 ? <p className="auth-provider-note">{text.loginTenantUnavailable}</p> : null}
+
+          {localProviderEnabled ? (
+            <>
+              <form className="auth-form auth-form-modern" onSubmit={onSubmitLocalAuth}>
+                {localAuthMode === "register" ? (
+                  <label>
+                    <span>{text.localName}</span>
+                    <input
+                      value={localName}
+                      onChange={(event) => setLocalName(event.target.value)}
+                      autoComplete="name"
+                      placeholder={text.localName}
+                    />
+                  </label>
+                ) : null}
+
+                <label>
+                  <span>{text.localEmail}</span>
+                  <input
+                    type="email"
+                    value={localEmail}
+                    onChange={(event) => setLocalEmail(event.target.value)}
+                    autoComplete="email"
+                    placeholder={text.localEmail}
+                    required
+                  />
+                </label>
+
+                <label>
+                  <span>{text.localPassword}</span>
+                  <input
+                    type="password"
+                    value={localPassword}
+                    onChange={(event) => setLocalPassword(event.target.value)}
+                    autoComplete={localAuthMode === "login" ? "current-password" : "new-password"}
+                    placeholder={text.localPassword}
+                    required
+                  />
+                </label>
+
+                {localAuthMode === "login" ? (
+                  <a className="auth-forgot-link" href="#" onClick={(event) => event.preventDefault()}>
+                    {text.forgotPassword}
+                  </a>
+                ) : null}
+
+                {localAuthError ? <p className="auth-error">{localAuthError}</p> : null}
+
+                <button type="submit" className="auth-primary-button" disabled={localAuthBusy}>
+                  {localAuthMode === "login" ? text.localSignIn : text.localRegister}
+                </button>
+              </form>
+
+              <button
+                type="button"
+                className="auth-mode-toggle auth-mode-toggle-modern"
+                onClick={() => {
+                  setLocalAuthError("");
+                  setLocalAuthMode((prev) => (prev === "login" ? "register" : "login"));
+                }}
+              >
+                {localAuthMode === "login" ? text.localNeedAccount : text.localHaveAccount}
+              </button>
+            </>
+          ) : null}
+
+          {azureProviderEnabled ? (
+            <>
+              {localProviderEnabled ? <p className="auth-or-divider">{text.authOr}</p> : null}
+              <button
+                type="button"
+                className="auth-azure-button auth-azure-button-modern"
+                onClick={onAzureSignIn}
+              >
+                <span aria-hidden className="microsoft-logo-mark">
+                  <svg viewBox="0 0 16 16" role="presentation" focusable="false">
+                    <rect x="1" y="1" width="6" height="6" fill="#f25022" />
+                    <rect x="9" y="1" width="6" height="6" fill="#7fba00" />
+                    <rect x="1" y="9" width="6" height="6" fill="#00a4ef" />
+                    <rect x="9" y="9" width="6" height="6" fill="#ffb900" />
+                  </svg>
+                </span>
+                <span>{text.azureSignIn}</span>
+              </button>
+            </>
+          ) : null}
+
+          {!localProviderEnabled && !azureProviderEnabled && loginTenants.length > 0 ? (
+            <p className="auth-provider-note">{text.noAuthProviders}</p>
+          ) : null}
+
+          <Link href="/sysadmin-login" className="auth-sysadmin-icon-link" aria-label={text.sysAdminOpenPage} title={text.sysAdminOpenPage}>
+            <svg viewBox="0 0 24 24" role="presentation" focusable="false" aria-hidden>
+              <path
+                d="M12 2a5 5 0 0 0-5 5v3H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2h-1V7a5 5 0 0 0-5-5Zm-3 8V7a3 3 0 1 1 6 0v3H9Zm3 3a2 2 0 0 1 1 3.73V19h-2v-2.27A2 2 0 0 1 12 13Z"
+                fill="currentColor"
+              />
+            </svg>
+          </Link>
         </section>
       </main>
     );
@@ -3331,27 +4934,6 @@ export default function Page() {
     <main className="wheel-page">
       <section className="wheel-stage">
         <header className="wheel-toolbar">
-          <button
-            type="button"
-            className="plan-again-btn"
-            onClick={planAgain}
-            disabled={!activeWheelId || isHydratingWheel}
-          >
-            <span aria-hidden className="plan-again-btn-icon">
-              <svg viewBox="0 0 24 24">
-                <path
-                  d="M4 5v6h6M20 19v-6h-6M7 8a7 7 0 0 1 11-2.1M17 16a7 7 0 0 1-11 2.1"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2.1"
-                />
-              </svg>
-            </span>
-            <span>{text.planAgain}</span>
-          </button>
-
           <div className="toolbar-controls">
             <div className="window-nav">
               <button type="button" onClick={() => shiftWindow(-1)}>
@@ -3761,12 +5343,17 @@ export default function Page() {
       <section className="side-panels">
         <aside className="filter-sidebar">
           <header className="filter-sidebar-header">
-            <h2>{text.sidebarTitle}</h2>
+            <h2>{activeTenant?.name || text.sidebarTitle}</h2>
             <div className="sidebar-user-row">
               <span>{session?.user?.email ?? ""}</span>
               <button type="button" className="sidebar-signout-btn" onClick={() => signOut()}>
                 {text.signOut}
               </button>
+            </div>
+            <div className="sidebar-user-meta">
+              <p>
+                {text.userRoleLabel}: <strong>{currentRoleLabel}</strong>
+              </p>
             </div>
             <div className="sidebar-utility-stack">
               <div className="sidebar-utility-actions">
@@ -3781,6 +5368,25 @@ export default function Page() {
                     ⧉
                   </span>
                 </button>
+                <div className="sharing-menu">
+                  <button
+                    ref={sharingTriggerRef}
+                    type="button"
+                    className="sharing-trigger"
+                    aria-label={text.openSharing}
+                    title={text.sharingTitle}
+                    aria-expanded={isSharingOpen}
+                    aria-controls="sharing-dialog"
+                    onClick={() => {
+                      setIsSettingsOpen(false);
+                      setIsSharingOpen((open) => !open);
+                    }}
+                  >
+                    <span className="icon-glyph" aria-hidden>
+                      ↗
+                    </span>
+                  </button>
+                </div>
                 <div className="settings-menu">
                   <button
                     ref={settingsTriggerRef}
@@ -3788,134 +5394,16 @@ export default function Page() {
                     className="settings-trigger"
                     aria-label={text.openSettings}
                     aria-expanded={isSettingsOpen}
-                    aria-controls="settings-popover"
-                    onClick={() => setIsSettingsOpen((open) => !open)}
+                    aria-controls="settings-dialog"
+                    onClick={() => {
+                      setIsSharingOpen(false);
+                      setIsSettingsOpen((open) => !open);
+                    }}
                   >
                     <span className="icon-glyph" aria-hidden>
                       ⚙
                     </span>
                   </button>
-
-                  {isSettingsOpen ? (
-                    <section
-                      id="settings-popover"
-                      ref={settingsPopoverRef}
-                      className="settings-popover"
-                      aria-label={text.settingsTitle}
-                    >
-                      <header className="settings-modal-header">
-                        <h3>{text.settingsTitle}</h3>
-                        <button type="button" className="settings-close" onClick={() => setIsSettingsOpen(false)} aria-label={text.closeSettings}>
-                          x
-                        </button>
-                      </header>
-                      <section className="settings-theme-field" aria-label={text.theme}>
-                        <h4>{text.theme}</h4>
-                        <div className="theme-choice-grid">
-                          {Object.values(THEME_PRESETS).map((preset) => {
-                            const isActive = preset.id === themeId;
-                            return (
-                              <button
-                                key={preset.id}
-                                type="button"
-                                className={`theme-choice${isActive ? " is-active" : ""}`}
-                                aria-pressed={isActive}
-                                onClick={() => setThemeId(preset.id)}
-                              >
-                                <span className="theme-choice-name">{preset.name}</span>
-                                <span className="theme-choice-swatches" aria-hidden>
-                                  {preset.ringPalette.slice(0, 5).map((entry, index) => (
-                                    <span
-                                      key={`${preset.id}-swatch-${index}`}
-                                      className="theme-choice-swatch"
-                                      style={{ background: `linear-gradient(135deg, ${entry.color}, ${entry.accent})` }}
-                                    />
-                                  ))}
-                                </span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </section>
-                      <label>
-                        {text.language}
-                        <select value={language} onChange={(event) => setLanguage(event.target.value as AppLanguage)}>
-                          <option value="nb">{text.languageNb}</option>
-                          <option value="en">{text.languageEn}</option>
-                        </select>
-                      </label>
-                      <label>
-                        {text.periodAnchoring}
-                        <select
-                          value={windowAnchorMode}
-                          onChange={(event) => setWindowAnchorMode(event.target.value as WindowAnchorMode)}
-                        >
-                          <option value="dynamic_today">{text.dynamicAnchoring}</option>
-                          <option value="manual">{text.manualAnchoring}</option>
-                        </select>
-                      </label>
-                      <label className="settings-toggle">
-                        <input
-                          type="checkbox"
-                          checked={seamShadowEnabled}
-                          onChange={(event) => setSeamShadowEnabled(event.target.checked)}
-                        />
-                        <span>{text.seamShadow}</span>
-                      </label>
-                      <section className="settings-share-field" aria-label={text.sharingTitle}>
-                        <h4>{text.sharingTitle}</h4>
-                        <label>
-                          {text.shareRoleField}
-                          <select value={shareRole} onChange={(event) => setShareRole(event.target.value as "VIEWER" | "EDITOR" | "OWNER")}>
-                            <option value="VIEWER">Viewer</option>
-                            <option value="EDITOR">Editor</option>
-                            <option value="OWNER">Owner</option>
-                          </select>
-                        </label>
-                        <div className="settings-share-row">
-                          <input
-                            value={shareUserEmail}
-                            placeholder={text.shareUserPlaceholder}
-                            onChange={(event) => setShareUserEmail(event.target.value)}
-                          />
-                          <button type="button" onClick={shareWithUser} disabled={isSharingBusy || !shareUserEmail.trim()}>
-                            {text.shareUserAction}
-                          </button>
-                        </div>
-                        <div className="settings-share-row">
-                          <input
-                            value={shareGroupId}
-                            placeholder={text.shareGroupPlaceholder}
-                            onChange={(event) => setShareGroupId(event.target.value)}
-                          />
-                          <button type="button" onClick={shareWithGroup} disabled={isSharingBusy || !shareGroupId.trim()}>
-                            {text.shareGroupAction}
-                          </button>
-                        </div>
-                        <div className="settings-share-list">
-                          {shares.length > 0 ? (
-                            shares.map((entry) => {
-                              const label =
-                                entry.targetType === "USER"
-                                  ? entry.user?.email || entry.user?.name || "user"
-                                  : entry.group?.displayName || entry.group?.tenantGroupId || "group";
-                              return (
-                                <div key={entry.id} className="settings-share-item">
-                                  <span>{label}</span>
-                                  <span>{entry.role}</span>
-                                  <button type="button" onClick={() => removeShare(entry)} disabled={isSharingBusy}>
-                                    {text.removeShare}
-                                  </button>
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <p className="settings-share-empty">{text.noShares}</p>
-                          )}
-                        </div>
-                      </section>
-                    </section>
-                  ) : null}
                 </div>
               </div>
               {copyNotice ? (
@@ -3926,33 +5414,101 @@ export default function Page() {
             </div>
           </header>
           <section className="filter-sidebar-section wheel-selector-section">
-            <label>
-              {text.wheelField}
-              <select
-                value={activeWheelId ?? ""}
-                onChange={(event) => setActiveWheelId(event.target.value || null)}
-                disabled={isHydratingWheel || wheels.length === 0}
-              >
-                {wheels.map((wheel) => (
-                  <option key={wheel.id} value={wheel.id}>
-                    {wheel.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button type="button" className="secondary" onClick={createWheelFromUi}>
-              + {text.createWheel}
-            </button>
+            {userTenants.length > 0 ? (
+              <div className="tenant-picker-row">
+                <label className="tenant-picker-label">
+                  {text.adminTenantField}
+                  <select
+                    value={activeTenantId ?? ""}
+                    onChange={(event) => {
+                      const nextTenantId = event.target.value;
+                      void applyActiveTenant(nextTenantId, { persist: true, closeChooser: true });
+                    }}
+                    disabled={isSwitchingTenant || userTenants.length <= 1}
+                  >
+                    {userTenants.map((membership) => (
+                      <option key={membership.tenantId} value={membership.tenantId}>
+                        {membership.tenant.name} ({membership.tenant.slug})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {canUseAdminSetup ? (
+                  <button
+                    type="button"
+                    className="ring-edit-trigger tenant-admin-trigger"
+                    aria-label={text.adminSetup}
+                    title={text.adminSetup}
+                    onClick={() => {
+                      setIsSettingsOpen(false);
+                      setIsAdminSetupOpen(true);
+                      void loadAdminData();
+                    }}
+                    disabled={isSwitchingTenant || !activeTenantId}
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden>
+                      <path
+                        d="M19.14 12.94a7.49 7.49 0 0 0 .05-.94 7.49 7.49 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.28 7.28 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.49-.42h-3.84a.5.5 0 0 0-.49.42l-.36 2.54a7.28 7.28 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.49 7.49 0 0 0-.05.94 7.49 7.49 0 0 0 .05.94L2.82 14.52a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.39 1.04.7 1.62.94l.36 2.54a.5.5 0 0 0 .49.42h3.84a.5.5 0 0 0 .49-.42l.36-2.54c.58-.24 1.12-.55 1.62-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            <div className="filter-sidebar-section-head wheel-selector-header">
+              <h3>{text.wheelField}</h3>
+              <button type="button" className="secondary wheel-create-trigger" onClick={createWheelFromUi} disabled={isWheelBusy || !activeTenantId}>
+                + {text.createWheel}
+              </button>
+            </div>
+            <div className="wheel-list">
+              {wheels.map((wheel) => {
+                const isActive = wheel.id === activeWheelId;
+                return (
+                  <div key={`wheel-row-${wheel.id}`} className="wheel-list-row">
+                    <button
+                      type="button"
+                      className={`wheel-list-item${isActive ? " is-active" : ""}`}
+                      aria-pressed={isActive}
+                      onClick={() => setActiveWheelId(wheel.id)}
+                      disabled={isHydratingWheel || isWheelBusy || !activeTenantId}
+                    >
+                      <span className="wheel-list-name">{wheel.title}</span>
+                    </button>
+                    <div className="ring-row-actions">
+                      <button
+                        type="button"
+                        className="ring-edit-trigger"
+                        aria-label={`${text.renameWheel}: ${wheel.title}`}
+                        onClick={() => openWheelRenameDialog(wheel.id)}
+                        disabled={isWheelBusy || !activeTenantId}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden>
+                          <path
+                            d="M19.14 12.94a7.49 7.49 0 0 0 .05-.94 7.49 7.49 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.28 7.28 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.49-.42h-3.84a.5.5 0 0 0-.49.42l-.36 2.54a7.28 7.28 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.49 7.49 0 0 0-.05.94 7.49 7.49 0 0 0 .05.94L2.82 14.52a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.39 1.04.7 1.62.94l.36 2.54a.5.5 0 0 0 .49.42h3.84a.5.5 0 0 0 .49-.42l.36-2.54c.58-.24 1.12-.55 1.62-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"
+                            fill="currentColor"
+                          />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className="ring-delete-trigger"
+                        aria-label={`${text.deleteWheel}: ${wheel.title}`}
+                        onClick={() => {
+                          void deleteWheelFromUi(wheel.id);
+                        }}
+                        disabled={isWheelBusy || !activeTenantId}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </section>
           <div className="sidebar-primary-actions">
-            <button
-              type="button"
-              className="activity-add-trigger"
-              onClick={openCreateActivityModal}
-              disabled={!activeWheelId || isHydratingWheel}
-            >
-              + {text.openActivityModal}
-            </button>
             <button
               type="button"
               className="category-add-trigger"
@@ -3961,8 +5517,18 @@ export default function Page() {
             >
               + {text.openCategoryModal}
             </button>
+            <button
+              type="button"
+              className="activity-add-trigger"
+              onClick={openCreateActivityModal}
+              disabled={!activeWheelId || isHydratingWheel}
+            >
+              + {text.openActivityModal}
+            </button>
           </div>
           {isHydratingWheel ? <p className="status-chip">{text.loading}</p> : null}
+          {isSwitchingTenant ? <p className="status-chip">{text.loading}</p> : null}
+          {tenantScopeError ? <p className="status-chip is-error">{tenantScopeError}</p> : null}
           {loadError ? <p className="status-chip is-error">{loadError}</p> : null}
           {saveError ? <p className="status-chip is-error">{saveError}</p> : null}
 
@@ -4006,19 +5572,30 @@ export default function Page() {
                         <span className="ring-filter-name">{ring.label}</span>
                         <span className="ring-filter-count">{ringActivityCountById.get(ring.id) ?? 0}</span>
                       </button>
-                      <button
-                        type="button"
-                        className="ring-edit-trigger"
-                        aria-label={`${text.editRing}: ${ring.label}`}
-                        onClick={() => openEditRingModal(ring.id)}
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden>
-                          <path
-                            d="M19.14 12.94a7.49 7.49 0 0 0 .05-.94 7.49 7.49 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.28 7.28 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.49-.42h-3.84a.5.5 0 0 0-.49.42l-.36 2.54a7.28 7.28 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.49 7.49 0 0 0-.05.94 7.49 7.49 0 0 0 .05.94L2.82 14.52a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.39 1.04.7 1.62.94l.36 2.54a.5.5 0 0 0 .49.42h3.84a.5.5 0 0 0 .49-.42l.36-2.54c.58-.24 1.12-.55 1.62-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"
-                            fill="currentColor"
-                          />
-                        </svg>
-                      </button>
+                      <div className="ring-row-actions">
+                        <button
+                          type="button"
+                          className="ring-edit-trigger"
+                          aria-label={`${text.editRing}: ${ring.label}`}
+                          onClick={() => openEditRingModal(ring.id)}
+                        >
+                          <svg viewBox="0 0 24 24" aria-hidden>
+                            <path
+                              d="M19.14 12.94a7.49 7.49 0 0 0 .05-.94 7.49 7.49 0 0 0-.05-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.28 7.28 0 0 0-1.62-.94l-.36-2.54a.5.5 0 0 0-.49-.42h-3.84a.5.5 0 0 0-.49.42l-.36 2.54a7.28 7.28 0 0 0-1.62.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.49 7.49 0 0 0-.05.94 7.49 7.49 0 0 0 .05.94L2.82 14.52a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .6.22l2.39-.96c.5.39 1.04.7 1.62.94l.36 2.54a.5.5 0 0 0 .49.42h3.84a.5.5 0 0 0 .49-.42l.36-2.54c.58-.24 1.12-.55 1.62-.94l2.39.96a.5.5 0 0 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"
+                              fill="currentColor"
+                            />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          className="ring-delete-trigger"
+                          aria-label={`${text.deleteRing}: ${ring.label}`}
+                          onClick={() => deleteRing(ring.id)}
+                          disabled={ringTemplates.length <= 1 || isWheelBusy}
+                        >
+                          <span aria-hidden>×</span>
+                        </button>
+                      </div>
                     </div>
                   );
                 })
@@ -4089,6 +5666,693 @@ export default function Page() {
         </aside>
 
       </section>
+
+      {isSettingsOpen ? (
+        <div className="activity-modal-backdrop">
+          <section
+            id="settings-dialog"
+            ref={settingsPopoverRef}
+            className="editor-panel activity-modal settings-modal"
+            aria-label={text.settingsTitle}
+          >
+            <header className="activity-modal-header">
+              <h2>{text.settingsTitle}</h2>
+              <button
+                type="button"
+                className="activity-modal-close"
+                onClick={() => setIsSettingsOpen(false)}
+                aria-label={text.closeSettings}
+              >
+                x
+              </button>
+            </header>
+            <p className="settings-personal-hint">{text.settingsPersonalHint}</p>
+            <section className="settings-theme-field" aria-label={text.theme}>
+              <h4>{text.theme}</h4>
+              <div className="theme-choice-grid">
+                {Object.values(THEME_PRESETS).map((preset) => {
+                  const isActive = preset.id === themeId;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      className={`theme-choice${isActive ? " is-active" : ""}`}
+                      aria-pressed={isActive}
+                      onClick={() => setThemeId(preset.id)}
+                    >
+                      <span className="theme-choice-name">{preset.name}</span>
+                      <span className="theme-choice-swatches" aria-hidden>
+                        {preset.ringPalette.slice(0, 5).map((entry, index) => (
+                          <span
+                            key={`${preset.id}-swatch-${index}`}
+                            className="theme-choice-swatch"
+                            style={{ background: `linear-gradient(135deg, ${entry.color}, ${entry.accent})` }}
+                          />
+                        ))}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+            <label>
+              {text.language}
+              <select value={language} onChange={(event) => setLanguage(event.target.value as AppLanguage)}>
+                <option value="nb">{text.languageNb}</option>
+                <option value="en">{text.languageEn}</option>
+              </select>
+            </label>
+            <label>
+              {text.periodAnchoring}
+              <select
+                value={windowAnchorMode}
+                onChange={(event) => setWindowAnchorMode(event.target.value as WindowAnchorMode)}
+              >
+                <option value="dynamic_today">{text.dynamicAnchoring}</option>
+                <option value="manual">{text.manualAnchoring}</option>
+              </select>
+            </label>
+            <label className="settings-toggle">
+              <input
+                type="checkbox"
+                checked={seamShadowEnabled}
+                onChange={(event) => setSeamShadowEnabled(event.target.checked)}
+              />
+              <span>{text.seamShadow}</span>
+            </label>
+          </section>
+        </div>
+      ) : null}
+
+      {isSharingOpen ? (
+        <div className="activity-modal-backdrop">
+          <section
+            id="sharing-dialog"
+            ref={sharingPopoverRef}
+            className="editor-panel activity-modal sharing-modal"
+            aria-label={text.sharingTitle}
+          >
+            <header className="activity-modal-header">
+              <h2>{text.sharingTitle}</h2>
+              <button
+                type="button"
+                className="activity-modal-close"
+                onClick={() => setIsSharingOpen(false)}
+                aria-label={text.closeSharing}
+              >
+                x
+              </button>
+            </header>
+
+            <section className="settings-share-field" aria-label={text.sharingTitle}>
+              <label>
+                {text.shareRoleField}
+                <select value={shareRole} onChange={(event) => setShareRole(event.target.value as "VIEWER" | "EDITOR" | "OWNER")}>
+                  <option value="VIEWER">Viewer</option>
+                  <option value="EDITOR">Editor</option>
+                  <option value="OWNER">Owner</option>
+                </select>
+              </label>
+              <div className="settings-share-row">
+                <label className="settings-share-inline-label">
+                  <span>{text.shareUserPickerField}</span>
+                  <select
+                    value={shareUserSelectionEmail}
+                    onChange={(event) => {
+                      const email = event.target.value;
+                      setShareUserSelectionEmail(email);
+                      setShareUserEmail(email);
+                    }}
+                  >
+                    <option value="">{text.shareUserPickerPlaceholder}</option>
+                    {shareableUsers.map((user) => (
+                      <option key={user.id} value={user.email ?? ""}>
+                        {user.name ? `${user.name} (${user.email ?? "-"})` : (user.email ?? "-")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={shareWithUser}
+                  disabled={isSharingBusy || !(shareUserSelectionEmail || shareUserEmail).trim()}
+                >
+                  {text.shareUserAction}
+                </button>
+              </div>
+              <div className="settings-share-row">
+                <input
+                  value={shareGroupId}
+                  placeholder={text.shareGroupPlaceholder}
+                  onChange={(event) => setShareGroupId(event.target.value)}
+                />
+                <button type="button" onClick={shareWithGroup} disabled={isSharingBusy || !shareGroupId.trim()}>
+                  {text.shareGroupAction}
+                </button>
+              </div>
+              <div className="settings-share-list">
+                {shares.length > 0 ? (
+                  shares.map((entry) => {
+                    const label =
+                      entry.targetType === "USER"
+                        ? entry.user?.email || entry.user?.name || "user"
+                        : entry.group?.displayName || entry.group?.tenantGroupId || "group";
+                    return (
+                      <div key={entry.id} className="settings-share-item">
+                        <span>{label}</span>
+                        <span>{entry.role}</span>
+                        <button type="button" onClick={() => removeShare(entry)} disabled={isSharingBusy}>
+                          {text.removeShare}
+                        </button>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="settings-share-empty">{text.noShares}</p>
+                )}
+              </div>
+            </section>
+          </section>
+        </div>
+      ) : null}
+
+      {isTenantChooserOpen ? (
+        <div className="activity-modal-backdrop">
+          <section className="editor-panel activity-modal" aria-label="Choose tenant">
+            <header className="activity-modal-header">
+              <h2>{text.adminTenantField}</h2>
+            </header>
+            <p className="admin-meta">Choose which tenant you want to work in for this session.</p>
+            <label>
+              {text.adminTenantField}
+              <select value={tenantChooserId} onChange={(event) => setTenantChooserId(event.target.value)}>
+                {userTenants.map((membership) => (
+                  <option key={membership.tenantId} value={membership.tenantId}>
+                    {membership.tenant.name} ({membership.tenant.slug})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="advanced-setup-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!tenantChooserId) {
+                    return;
+                  }
+                  void applyActiveTenant(tenantChooserId, { persist: true, closeChooser: true });
+                }}
+                disabled={!tenantChooserId || isSwitchingTenant}
+              >
+                Continue
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isAdminSetupOpen ? (
+        <div className="activity-modal-backdrop">
+          <section
+            ref={adminSetupModalRef}
+            className="editor-panel activity-modal admin-setup-modal"
+            aria-label={text.adminSetupTitle}
+          >
+            <header className="activity-modal-header">
+              <h2>{text.adminSetupTitle}</h2>
+              <button
+                type="button"
+                className="activity-modal-close"
+                onClick={() => {
+                  setIsAzureSetupDialogOpen(false);
+                  setIsAdminSetupOpen(false);
+                }}
+                aria-label={text.closeAdminSetup}
+              >
+                x
+              </button>
+            </header>
+            <p className="admin-meta">{text.adminSetupHint}</p>
+
+            <div className="admin-setup-toolbar">
+              <button type="button" className="secondary" onClick={() => setIsUserAdminDialogOpen(true)}>
+                {text.adminOpenUserAdmin}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setIsAzureSetupDialogOpen(true)}
+              >
+                {text.adminOpenAzureSetup}
+              </button>
+            </div>
+
+            {adminError ? <p className="status-chip is-error">{adminError}</p> : null}
+
+            <section className="admin-users-block admin-scope-card" aria-label={text.adminTenantSectionTitle}>
+              <h3>{text.adminTenantSectionTitle}</h3>
+              <p className="admin-meta">{text.adminScopeHint}</p>
+              <label>
+                {text.adminTenantField}
+                <select
+                  value={activeAdminTenantId}
+                  onChange={(event) => {
+                    const nextTenantId = event.target.value;
+                    if (!nextTenantId || nextTenantId === activeAdminTenantId) {
+                      return;
+                    }
+                    setActiveAdminTenantId(nextTenantId);
+                    void (async () => {
+                      try {
+                        setIsAdminLoading(true);
+                        setAdminError("");
+                        const [overviewPayload] = await Promise.all([
+                          requestJson<{ overview: AdminOverviewModel }>(
+                            `/api/admin/overview?tenantId=${encodeURIComponent(nextTenantId)}`
+                          ),
+                          loadAdminTenantContext(nextTenantId),
+                          loadAdminTenantSettings(nextTenantId)
+                        ]);
+                        setAdminOverview(overviewPayload.overview);
+                      } catch {
+                        setAdminError(text.adminLoadFailed);
+                      } finally {
+                        setIsAdminLoading(false);
+                      }
+                    })();
+                  }}
+                  disabled={isAdminLoading || adminTenants.length === 0}
+                >
+                  {adminTenants.map((tenant) => (
+                    <option key={tenant.id} value={tenant.id}>
+                      {tenant.name} ({tenant.slug})
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <p className="admin-meta">
+                {activeAdminTenant ? `${activeAdminTenant.name} (${activeAdminTenant.slug})` : text.adminTenantUnavailable}
+              </p>
+              <p className="filter-empty">{text.adminTenantManagedBySystemAdmin}</p>
+            </section>
+
+            <section className="admin-users-block admin-scope-card" aria-label={text.smtpSettingsTitle}>
+              <h3>{text.smtpSettingsTitle}</h3>
+              <p className="admin-meta">{text.smtpSettingsHint}</p>
+              <div className="admin-form-grid admin-smtp-grid">
+                <label>
+                  {text.smtpHostField}
+                  <input value={smtpHost} onChange={(event) => setSmtpHost(event.target.value)} placeholder="smtp.example.com" />
+                </label>
+                <label>
+                  {text.smtpPortField}
+                  <input value={smtpPort} onChange={(event) => setSmtpPort(event.target.value)} placeholder="587" />
+                </label>
+                <label>
+                  {text.smtpUserField}
+                  <input value={smtpUser} onChange={(event) => setSmtpUser(event.target.value)} placeholder="smtp-user" />
+                </label>
+                <label>
+                  {text.smtpPassField}
+                  <input
+                    type="password"
+                    value={smtpPass}
+                    onChange={(event) => setSmtpPass(event.target.value)}
+                    placeholder="••••••••"
+                  />
+                </label>
+                <label>
+                  {text.smtpFromField}
+                  <input value={smtpFrom} onChange={(event) => setSmtpFrom(event.target.value)} placeholder="noreply@tenant.no" />
+                </label>
+                <label>
+                  {text.smtpReplyToField}
+                  <input value={smtpReplyTo} onChange={(event) => setSmtpReplyTo(event.target.value)} placeholder="support@tenant.no" />
+                </label>
+                <label className="admin-field-full">
+                  {text.smtpTestToField}
+                  <input value={smtpTestTo} onChange={(event) => setSmtpTestTo(event.target.value)} placeholder="bruker@domene.no" />
+                </label>
+                <label className="admin-check-option admin-field-full">
+                  <input type="checkbox" checked={smtpSecure} onChange={(event) => setSmtpSecure(event.target.checked)} />
+                  <span>{text.smtpSecureField}</span>
+                </label>
+              </div>
+              <div className="admin-section-actions">
+                <button type="button" onClick={saveSmtpSetupForTenant} disabled={isSmtpSaving || !activeAdminTenantId}>
+                  {text.smtpSaveAction}
+                </button>
+                <button
+                  type="button"
+                  className="secondary"
+                  onClick={sendSmtpTestEmail}
+                  disabled={isSmtpTesting || !activeAdminTenantId || !smtpTestTo.trim()}
+                >
+                  {text.smtpTestAction}
+                </button>
+              </div>
+              {smtpNotice ? <p className="status-chip">{smtpNotice}</p> : null}
+            </section>
+
+            {adminOverview ? (
+              <section className="admin-overview-grid" aria-label={text.adminOverviewTitle}>
+                <article className="admin-overview-item">
+                  <h4>{text.adminTotalUsers}</h4>
+                  <p>{adminOverview.users}</p>
+                </article>
+                <article className="admin-overview-item">
+                  <h4>{text.adminTotalWheels}</h4>
+                  <p>{adminOverview.wheels}</p>
+                </article>
+                <article className="admin-overview-item">
+                  <h4>{text.adminTotalActivities}</h4>
+                  <p>{adminOverview.activities}</p>
+                </article>
+                <article className="admin-overview-item">
+                  <h4>{text.adminTotalShares}</h4>
+                  <p>{adminOverview.shares}</p>
+                </article>
+                <article className="admin-overview-item">
+                  <h4>{text.adminTotalGroups}</h4>
+                  <p>{adminOverview.groups}</p>
+                </article>
+                <article className="admin-overview-item">
+                  <h4>{text.adminTotalAccounts}</h4>
+                  <p>{adminOverview.accounts}</p>
+                </article>
+                <article className="admin-overview-item">
+                  <h4>{text.adminLocalAccounts}</h4>
+                  <p>{adminOverview.localAccounts}</p>
+                </article>
+                <article className="admin-overview-item">
+                  <h4>{text.adminAzureAccounts}</h4>
+                  <p>{adminOverview.azureAccounts}</p>
+                </article>
+              </section>
+            ) : null}
+
+            <div className="advanced-setup-actions admin-setup-bottom-actions">
+              <button type="button" className="secondary" onClick={() => setIsAdminSetupOpen(false)}>
+                {text.closeAdminSetup}
+              </button>
+            </div>
+
+            {isAzureSetupDialogOpen ? (
+              <div className="activity-modal-backdrop admin-child-backdrop">
+                <section
+                  ref={azureSetupDialogRef}
+                  className="editor-panel activity-modal azure-setup-modal"
+                  aria-label={text.advancedSetupTitle}
+                >
+                  <header className="activity-modal-header">
+                    <h2>{text.advancedSetupTitle}</h2>
+                    <button
+                      type="button"
+                      className="activity-modal-close"
+                      onClick={() => setIsAzureSetupDialogOpen(false)}
+                      aria-label={text.closeAdvancedSetup}
+                    >
+                      x
+                    </button>
+                  </header>
+
+                  <section className="advanced-setup-block">
+                    <h3>{text.azureSetupHow}</h3>
+                    <p>{text.azureSetupStep1}</p>
+                    <p>{text.azureSetupStep2}</p>
+                    <p>{text.azureSetupStep3}</p>
+                    <p>{text.azureSetupStep4}</p>
+                    <p>{text.azureSetupStep5}</p>
+                  </section>
+
+                  <label>
+                    {text.azureCallbackUri}
+                    <input value={azureCallbackUri} readOnly />
+                  </label>
+
+                  <label>
+                    {text.azureTenantId}
+                    <input value={azureTenantId} onChange={(event) => setAzureTenantId(event.target.value)} />
+                  </label>
+
+                  <label>
+                    {text.azureClientId}
+                    <input value={azureClientId} onChange={(event) => setAzureClientId(event.target.value)} />
+                  </label>
+
+                  <label>
+                    {text.azureClientSecret}
+                    <input
+                      type="password"
+                      value={azureClientSecret}
+                      onChange={(event) => setAzureClientSecret(event.target.value)}
+                    />
+                  </label>
+
+                  <div className="advanced-setup-actions">
+                    <button
+                      type="button"
+                      onClick={saveAzureSetupForTenant}
+                      disabled={
+                        isAzureSetupSaving ||
+                        !activeAdminTenantId ||
+                        !azureTenantId.trim() ||
+                        !azureClientId.trim() ||
+                        !azureClientSecret.trim()
+                      }
+                    >
+                      {text.azureCopyEnv}
+                    </button>
+                    <button type="button" className="secondary" onClick={() => setIsAzureSetupDialogOpen(false)}>
+                      {text.closeAdvancedSetup}
+                    </button>
+                  </div>
+                  {azureCopyNotice ? <p className="status-chip">{azureCopyNotice}</p> : null}
+                </section>
+              </div>
+            ) : null}
+          </section>
+        </div>
+      ) : null}
+
+      {isUserAdminDialogOpen ? (
+        <div className="activity-modal-backdrop">
+          <section
+            ref={userAdminDialogRef}
+            className="editor-panel activity-modal user-admin-modal"
+            aria-label={text.userAdminTitle}
+          >
+            <header className="activity-modal-header">
+              <h2>{text.userAdminTitle}</h2>
+              <button
+                type="button"
+                className="activity-modal-close"
+                onClick={() => {
+                  closeAdminUserEditor();
+                  setIsUserAdminDialogOpen(false);
+                }}
+                aria-label={text.closeUserAdmin}
+              >
+                x
+              </button>
+            </header>
+
+            <p className="admin-meta">{text.adminUsersHint}</p>
+
+            <section className="admin-users-block">
+              <div className="admin-user-top-actions">
+                <button type="button" onClick={openCreateAdminUserEditor} disabled={isAdminUserSaving || !activeAdminTenantId}>
+                  {text.adminCreateUser}
+                </button>
+              </div>
+              <div className="user-admin-filters">
+                <label>
+                  {text.userAdminSearch}
+                  <input
+                    value={userAdminFilterQuery}
+                    onChange={(event) => setUserAdminFilterQuery(event.target.value)}
+                    placeholder={text.userAdminSearch}
+                  />
+                </label>
+                <label>
+                  {text.userAdminRoleFilter}
+                  <select
+                    value={userAdminFilterRole}
+                    onChange={(event) => setUserAdminFilterRole(event.target.value as "ALL" | "ADMIN" | "MEMBER")}
+                  >
+                    <option value="ALL">{text.userAdminFilterAll}</option>
+                    <option value="ADMIN">{text.userAdminFilterAdmins}</option>
+                    <option value="MEMBER">{text.userAdminFilterMembers}</option>
+                  </select>
+                </label>
+                <label>
+                  {text.userAdminStatusFilter}
+                  <select
+                    value={userAdminFilterStatus}
+                    onChange={(event) => setUserAdminFilterStatus(event.target.value as "ALL" | "ACTIVE" | "DISABLED")}
+                  >
+                    <option value="ALL">{text.userAdminFilterAll}</option>
+                    <option value="ACTIVE">{text.userAdminFilterActive}</option>
+                    <option value="DISABLED">{text.userAdminFilterDisabled}</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="user-admin-table">
+                <div className="user-admin-row user-admin-head">
+                  <span>{text.adminUserName}</span>
+                  <span>{text.adminUserEmail}</span>
+                  <span>{text.adminUserRoles}</span>
+                  <span>{text.adminUserStatus}</span>
+                  <span>{text.adminUserProviders}</span>
+                  <span>{text.adminUserLastLogin}</span>
+                  <span>{text.adminActions}</span>
+                </div>
+                {filteredAdminUsers.length > 0 ? (
+                  filteredAdminUsers.map((user) => (
+                    <div key={user.id} className="user-admin-row">
+                      <span>{user.name || "-"}</span>
+                      <span>{user.email || "-"}</span>
+                      <span>{user.isAdmin ? text.roleTenantAdmin : text.roleTenantMember}</span>
+                      <span>{user.isDisabled ? text.adminUserStatusDisabled : text.adminUserStatusActive}</span>
+                      <span>{user.providers.join(", ") || (user.hasLocalPassword ? "credentials" : "-")}</span>
+                      <span>
+                        {user.lastLoginAt
+                          ? DateTime.fromISO(user.lastLoginAt, { zone: TIMEZONE }).toFormat("yyyy-LL-dd HH:mm")
+                          : "-"}
+                      </span>
+                      <div className="user-admin-actions">
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => openAdminUserEditor(user)}
+                          disabled={isAdminLoading || isAdminUserSaving}
+                        >
+                          {text.adminEditUser}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void toggleTenantUserDisabled(user)}
+                          disabled={isAdminLoading || isAdminUserSaving || session?.user?.id === user.id}
+                        >
+                          {user.isDisabled ? text.adminEnableUser : text.adminDisableUser}
+                        </button>
+                        <button
+                          type="button"
+                          className="secondary"
+                          onClick={() => void deleteTenantUser(user)}
+                          disabled={isAdminLoading || isAdminUserSaving || session?.user?.id === user.id}
+                        >
+                          {text.adminDeleteUser}
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="filter-empty">{text.adminNoUsers}</p>
+                )}
+              </div>
+            </section>
+
+            <div className="advanced-setup-actions admin-setup-bottom-actions">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  closeAdminUserEditor();
+                  setIsUserAdminDialogOpen(false);
+                }}
+              >
+                {text.closeUserAdmin}
+              </button>
+            </div>
+
+            {adminUserEditorMode ? (
+              <div className="activity-modal-backdrop admin-child-backdrop">
+                <section
+                  className="editor-panel activity-modal admin-user-edit-modal"
+                  aria-label={adminUserEditorMode === "create" ? text.adminNewUserTitle : text.adminEditUser}
+                >
+                  <header className="activity-modal-header">
+                    <h2>{adminUserEditorMode === "create" ? text.adminNewUserTitle : text.adminEditUser}</h2>
+                    <button
+                      type="button"
+                      className="activity-modal-close"
+                      onClick={closeAdminUserEditor}
+                      aria-label={text.adminCancelEditUser}
+                    >
+                      x
+                    </button>
+                  </header>
+                  <p className="admin-meta">{text.adminEditUserHint}</p>
+                  <div className="admin-form-grid admin-user-edit-grid">
+                    <label>
+                      {text.adminNewUserNameField}
+                      <input value={editingAdminUserName} onChange={(event) => setEditingAdminUserName(event.target.value)} />
+                    </label>
+                    <label>
+                      {text.adminNewUserEmailField}
+                      <input
+                        type="email"
+                        value={editingAdminUserEmail}
+                        onChange={(event) => setEditingAdminUserEmail(event.target.value)}
+                      />
+                    </label>
+                    <label>
+                      {adminUserEditorMode === "create" ? text.adminNewUserPasswordField : text.adminPasswordOptional}
+                      <input
+                        type="password"
+                        value={editingAdminUserPassword}
+                        onChange={(event) => setEditingAdminUserPassword(event.target.value)}
+                        placeholder="••••••••"
+                      />
+                    </label>
+                    <label className="admin-check-option">
+                      <input
+                        type="checkbox"
+                        checked={editingAdminUserIsAdmin}
+                        onChange={(event) => setEditingAdminUserIsAdmin(event.target.checked)}
+                      />
+                      <span>{text.adminNewUserAdminToggle}</span>
+                    </label>
+                    {adminUserEditorMode === "edit" ? (
+                      <label className="admin-check-option">
+                        <input
+                          type="checkbox"
+                          checked={editingAdminUserIsDisabled}
+                          onChange={(event) => setEditingAdminUserIsDisabled(event.target.checked)}
+                          disabled={session?.user?.id === editingAdminUserId}
+                        />
+                        <span>{text.adminUserStatusDisabled}</span>
+                      </label>
+                    ) : null}
+                  </div>
+                  <div className="admin-section-actions">
+                    <button
+                      type="button"
+                      onClick={saveTenantUserEdits}
+                      disabled={
+                        isAdminUserSaving ||
+                        !activeAdminTenantId ||
+                        !editingAdminUserEmail.trim() ||
+                        (adminUserEditorMode === "create"
+                          ? editingAdminUserPassword.length < 8
+                          : editingAdminUserPassword.length > 0 && editingAdminUserPassword.length < 8)
+                      }
+                    >
+                      {adminUserEditorMode === "create" ? text.adminCreateUser : text.adminSaveUser}
+                    </button>
+                    <button type="button" className="secondary" onClick={closeAdminUserEditor} disabled={isAdminUserSaving}>
+                      {text.adminCancelEditUser}
+                    </button>
+                  </div>
+                </section>
+              </div>
+            ) : null}
+          </section>
+        </div>
+      ) : null}
 
       {tagTooltip ? (
         <div
@@ -4463,6 +6727,45 @@ export default function Page() {
                 {text.deleteActivity}
               </button>
             </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isWheelRenameDialogOpen ? (
+        <div className="activity-modal-backdrop">
+          <section ref={wheelRenameDialogRef} className="editor-panel activity-modal wheel-rename-modal" aria-label={text.renameWheel}>
+            <header className="activity-modal-header">
+              <h2>{text.renameWheel}</h2>
+              <button type="button" className="activity-modal-close" onClick={closeWheelRenameDialog} aria-label={text.cancel}>
+                x
+              </button>
+            </header>
+            <form
+              className="wheel-rename-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void saveWheelRenameFromUi();
+              }}
+            >
+              <label htmlFor="wheel-rename-input">
+                {text.renameWheelPrompt}
+                <input
+                  id="wheel-rename-input"
+                  value={wheelRenameDraft}
+                  maxLength={90}
+                  autoFocus
+                  onChange={(event) => setWheelRenameDraft(event.target.value)}
+                />
+              </label>
+              <div className="category-modal-actions">
+                <button type="button" className="secondary" onClick={closeWheelRenameDialog}>
+                  {text.cancel}
+                </button>
+                <button type="submit" disabled={!wheelRenameDraft.trim() || isWheelBusy}>
+                  {text.renameWheel}
+                </button>
+              </div>
+            </form>
           </section>
         </div>
       ) : null}

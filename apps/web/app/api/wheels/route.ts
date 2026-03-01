@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 
-import { getAuthContext, getOrCreateUserFromContext } from "@/lib/access";
+import { assertActiveTenantAccess, getAuthContext, getOrCreateUserFromContext } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 
 export async function GET() {
@@ -11,10 +11,28 @@ export async function GET() {
   }
 
   const dbUser = await getOrCreateUserFromContext(authContext);
+  const activeTenantId = await assertActiveTenantAccess({
+    context: authContext,
+    userId: dbUser.id
+  });
+  if (activeTenantId instanceof NextResponse) {
+    return activeTenantId;
+  }
   const groups = authContext.groups.length > 0 ? authContext.groups : ["__none__"];
+
+  await prisma.wheel.updateMany({
+    where: {
+      ownerId: dbUser.id,
+      tenantId: null
+    },
+    data: {
+      tenantId: activeTenantId
+    }
+  });
 
   const wheels = await prisma.wheel.findMany({
     where: {
+      tenantId: activeTenantId,
       OR: [
         { ownerId: dbUser.id },
         {
@@ -60,6 +78,13 @@ export async function POST(request: Request) {
   }
 
   const dbUser = await getOrCreateUserFromContext(authContext);
+  const activeTenantId = await assertActiveTenantAccess({
+    context: authContext,
+    userId: dbUser.id
+  });
+  if (activeTenantId instanceof NextResponse) {
+    return activeTenantId;
+  }
   const body = (await request.json()) as {
     title?: string;
     timezone?: string;
@@ -86,7 +111,8 @@ export async function POST(request: Request) {
       startDate,
       durationMonths,
       config: body.config === null ? Prisma.JsonNull : ((body.config ?? undefined) as Prisma.InputJsonValue | undefined),
-      ownerId: dbUser.id
+      ownerId: dbUser.id,
+      tenantId: activeTenantId
     },
     select: {
       id: true,

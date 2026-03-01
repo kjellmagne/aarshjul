@@ -26,7 +26,21 @@ export async function POST(request: Request) {
     include: {
       activity: {
         include: {
-          wheel: true,
+          wheel: {
+            include: {
+              tenant: {
+                select: {
+                  smtpHost: true,
+                  smtpPort: true,
+                  smtpSecure: true,
+                  smtpUser: true,
+                  smtpPass: true,
+                  smtpFrom: true,
+                  smtpReplyTo: true
+                }
+              }
+            }
+          },
           schedule: true
         }
       }
@@ -46,6 +60,7 @@ export async function POST(request: Request) {
             zone: reminder.activity.schedule.timezone
           }).toFormat("dd.LL.yyyy HH:mm")
         : "ukjent frist";
+      const tenantSmtp = reminder.activity.wheel.tenant;
 
       await sendReminderEmail({
         to: reminder.recipientEmail,
@@ -56,7 +71,18 @@ export async function POST(request: Request) {
           `Frist: ${deadlineLabel}`,
           `Tidspunkt: ${DateTime.fromJSDate(reminder.scheduledFor).toISO()}`
         ].join("\n")
-      });
+      },
+      tenantSmtp
+        ? {
+            host: tenantSmtp.smtpHost ?? "",
+            port: tenantSmtp.smtpPort ?? 0,
+            secure: tenantSmtp.smtpSecure,
+            user: tenantSmtp.smtpUser,
+            pass: tenantSmtp.smtpPass,
+            from: tenantSmtp.smtpFrom ?? "",
+            replyTo: tenantSmtp.smtpReplyTo
+          }
+        : null);
 
       await prisma.activityReminder.update({
         where: { id: reminder.id },

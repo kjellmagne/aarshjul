@@ -5,6 +5,9 @@ declare module "next-auth" {
     user: DefaultSession["user"] & {
       id: string;
       groups: string[];
+      isAdmin: boolean;
+      isSystemAdmin: boolean;
+      activeTenantId: string | null;
     };
   }
 }
@@ -12,5 +15,8 @@ declare module "next-auth" {
 declare module "next-auth/jwt" {
   interface JWT {
     groups?: string[];
+    isAdmin?: boolean;
+    isSystemAdmin?: boolean;
+    activeTenantId?: string | null;
   }
 }
