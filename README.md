@@ -29,28 +29,27 @@ Build image locally:
 docker build -t aarshjul:local .
 ```
 
-Run image locally:
+Run app + PostgreSQL with Docker Compose:
 
 ```bash
-docker run --rm -p 3001:3000 \
-  -e DATABASE_URL="postgresql://USER:PASSWORD@HOST:5432/aarshjul" \
-  -e NEXTAUTH_URL="http://localhost:3001" \
-  -e NEXTAUTH_SECRET="replace-with-long-random-secret" \
-  -e AZURE_AD_CLIENT_ID="..." \
-  -e AZURE_AD_CLIENT_SECRET="..." \
-  -e AZURE_AD_TENANT_ID="..." \
-  aarshjul:local
+cp .env.docker.example .env
+docker compose up -d
 ```
 
-The app image is defined in:
-- `Dockerfile` (multi-stage, production image)
-- `.dockerignore`
+Notes:
+- `docker-compose.yml` includes both `app` and `db` services.
+- `app` defaults to image `aarshjul:local` (`AARSHJUL_IMAGE` can point to GHCR image).
+- default published app port is `3002` to avoid conflict with local `npm run dev` on `3001`.
+- Container startup runs `prisma db push` automatically (`AUTO_DB_PUSH=true`) before app boot.
+- To use GHCR image directly, set e.g. `AARSHJUL_IMAGE=ghcr.io/kjellmagne/aarshjul:latest` in `.env`.
 
 ## GitHub Container Workflow
 
-GitHub Actions workflow builds the Docker image on push/PR and publishes to GHCR on non-PR events:
+GitHub Actions workflow validates PostgreSQL compatibility and then builds/publishes the Docker image:
 
 - Workflow file: `.github/workflows/docker-image.yml`
+- DB verification job: `verify-with-postgres` (runs `db:generate`, `db:push`, and build against Postgres service)
+- Container smoke test: `smoke-test-container` (builds Docker image, boots it with PostgreSQL, verifies startup + DB sync)
 - Target image: `ghcr.io/kjellmagne/aarshjul`
 - Published tags include branch/tag/sha and `latest` on default branch.
 
@@ -108,7 +107,7 @@ npm run db:push -w apps/web
 - `PATCH/DELETE /api/activities/:activityId`
 - `GET/POST/DELETE /api/wheels/:wheelId/share` (share with user email or Azure AD group id)
 - `GET/PATCH /api/activities/:activityId/schedule` (advanced scheduling + reminder policy)
-- `POST /api/jobs/reminders/dispatch` (cron/webhook-driven reminder dispatcher, requires `x-job-secret`)
+- `POST /api/jobs/reminders/dispatch` (cron/webhook-driven reminder dispatcher, authorize with system API key or `x-job-secret`)
 - `GET/PATCH /api/admin/tenant` (tenant setup/config, admin only)
 - `GET /api/admin/overview` and `GET/PATCH /api/admin/users` (admin only)
 - `POST /api/admin/claim` (first-time admin bootstrap or `ADMIN_EMAILS` claim)

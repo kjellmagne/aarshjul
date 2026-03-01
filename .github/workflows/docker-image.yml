@@ -13,7 +13,123 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  verify-with-postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: aarshjul
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d aarshjul"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate -w apps/web
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aarshjul
+
+      - name: Push Prisma schema
+        run: npm run db:push -w apps/web
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aarshjul
+
+      - name: Build app
+        run: npm run build -w apps/web
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/aarshjul
+          NEXTAUTH_URL: http://localhost:3001
+          NEXTAUTH_SECRET: ci-secret
+
+  smoke-test-container:
+    needs: verify-with-postgres
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build app image
+        run: docker build -t aarshjul:ci .
+
+      - name: Start PostgreSQL for container smoke test
+        run: |
+          docker network create aarshjul-ci
+          docker run -d \
+            --name aarshjul-pg \
+            --network aarshjul-ci \
+            -e POSTGRES_DB=aarshjul \
+            -e POSTGRES_USER=postgres \
+            -e POSTGRES_PASSWORD=postgres \
+            postgres:16-alpine
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in $(seq 1 30); do
+            if docker exec aarshjul-pg pg_isready -U postgres -d aarshjul >/dev/null 2>&1; then
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "PostgreSQL did not become ready in time"
+          docker logs aarshjul-pg || true
+          exit 1
+
+      - name: Start app container
+        run: |
+          docker run -d \
+            --name aarshjul-app \
+            --network aarshjul-ci \
+            -p 3000:3000 \
+            -e DATABASE_URL=postgresql://postgres:postgres@aarshjul-pg:5432/aarshjul \
+            -e NEXTAUTH_URL=http://localhost:3000 \
+            -e NEXTAUTH_SECRET=ci-secret \
+            -e ADMIN_EMAILS=admin@example.com \
+            -e SYSTEM_ADMIN_EMAILS=sysadmin@example.com \
+            -e REMINDER_JOB_SECRET=ci-job-secret \
+            aarshjul:ci
+
+      - name: Verify app startup and DB sync
+        run: |
+          for i in $(seq 1 40); do
+            if curl --silent --show-error --fail http://localhost:3000/api/tenant >/dev/null; then
+              if docker logs aarshjul-app 2>&1 | grep -q "Database schema is in sync."; then
+                exit 0
+              fi
+            fi
+            sleep 2
+          done
+          echo "App did not become healthy or DB sync message missing"
+          docker logs aarshjul-app || true
+          exit 1
+
+      - name: Cleanup smoke test containers
+        if: always()
+        run: |
+          docker rm -f aarshjul-app aarshjul-pg >/dev/null 2>&1 || true
+          docker network rm aarshjul-ci >/dev/null 2>&1 || true
+
   build-and-push:
+    needs: [verify-with-postgres, smoke-test-container]
     runs-on: ubuntu-latest
     permissions:
       contents: read

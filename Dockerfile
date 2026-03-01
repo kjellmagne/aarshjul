@@ -33,18 +33,30 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
+ENV AUTO_DB_PUSH=true
+ENV DB_STARTUP_RETRIES=20
+ENV DB_STARTUP_WAIT_SECONDS=2
 
 WORKDIR /app
 
-RUN groupadd --system --gid 1001 nodejs \
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && groupadd --system --gid 1001 nodejs \
   && useradd --system --uid 1001 --gid nodejs nextjs
 
 COPY --from=builder /app/apps/web/.next/standalone ./
 COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=builder /app/apps/web/public ./apps/web/public
 COPY --from=builder /app/apps/web/prisma ./apps/web/prisma
+COPY --from=builder /app/apps/web/prisma.config.ts ./apps/web/prisma.config.ts
+COPY --from=builder /app/node_modules ./node_modules
+COPY scripts/docker-entrypoint.sh ./docker-entrypoint.sh
+
+RUN chmod +x ./docker-entrypoint.sh
+RUN chown -R nextjs:nodejs /app
 
 USER nextjs
 EXPOSE 3000
 
-CMD ["node", "apps/web/server.js"]
+CMD ["./docker-entrypoint.sh"]
