@@ -3,8 +3,8 @@ import "./globals.css";
 import Providers from "./providers";
 
 export const metadata: Metadata = {
-  title: "Aarshjul Prototype",
-  description: "Circular annual planning prototype"
+  title: "Aarshjul",
+  description: "Circular annual planning tool"
 };
 
 export default function RootLayout({

@@ -4,57 +4,68 @@ import { Prisma } from "@prisma/client";
 import { assertActiveTenantAccess, getAuthContext, getOrCreateUserFromContext } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 
-export async function GET() {
-  const authContext = await getAuthContext();
+export async function GET(request: Request) {
+  const authContext = await getAuthContext(request);
   if (authContext instanceof NextResponse) {
     return authContext;
   }
 
-  const dbUser = await getOrCreateUserFromContext(authContext);
+  let dbUserId = authContext.userId;
+  if (authContext.authMethod === "SESSION") {
+    const dbUser = await getOrCreateUserFromContext(authContext);
+    dbUserId = dbUser.id;
+  }
+
   const activeTenantId = await assertActiveTenantAccess({
     context: authContext,
-    userId: dbUser.id
+    userId: dbUserId
   });
   if (activeTenantId instanceof NextResponse) {
     return activeTenantId;
   }
-  const groups = authContext.groups.length > 0 ? authContext.groups : ["__none__"];
 
-  await prisma.wheel.updateMany({
-    where: {
-      ownerId: dbUser.id,
-      tenantId: null
-    },
-    data: {
-      tenantId: activeTenantId
-    }
-  });
+  if (authContext.authMethod === "SESSION") {
+    await prisma.wheel.updateMany({
+      where: {
+        ownerId: dbUserId,
+        tenantId: null
+      },
+      data: {
+        tenantId: activeTenantId
+      }
+    });
+  }
 
-  const wheels = await prisma.wheel.findMany({
-    where: {
-      tenantId: activeTenantId,
-      OR: [
-        { ownerId: dbUser.id },
-        {
-          shares: {
-            some: {
-              targetType: "USER",
-              userId: dbUser.id
-            }
-          }
-        },
-        {
-          shares: {
-            some: {
-              targetType: "AAD_GROUP",
-              group: {
-                tenantGroupId: { in: groups }
+  const where: Prisma.WheelWhereInput =
+    authContext.authMethod === "API_KEY"
+      ? { tenantId: activeTenantId }
+      : {
+          tenantId: activeTenantId,
+          OR: [
+            { ownerId: dbUserId },
+            {
+              shares: {
+                some: {
+                  targetType: "USER",
+                  userId: dbUserId
+                }
+              }
+            },
+            {
+              shares: {
+                some: {
+                  targetType: "AAD_GROUP",
+                  group: {
+                    tenantGroupId: { in: authContext.groups.length > 0 ? authContext.groups : ["__none__"] }
+                  }
+                }
               }
             }
-          }
-        }
-      ]
-    },
+          ]
+        };
+
+  const wheels = await prisma.wheel.findMany({
+    where,
     orderBy: { updatedAt: "desc" },
     select: {
       id: true,
@@ -72,15 +83,25 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const authContext = await getAuthContext();
+  const authContext = await getAuthContext(request);
   if (authContext instanceof NextResponse) {
     return authContext;
   }
 
-  const dbUser = await getOrCreateUserFromContext(authContext);
+  let dbUserId = authContext.userId;
+  try {
+    const dbUser = await getOrCreateUserFromContext(authContext);
+    dbUserId = dbUser.id;
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "API key creator account is required." },
+      { status: 400 }
+    );
+  }
+
   const activeTenantId = await assertActiveTenantAccess({
     context: authContext,
-    userId: dbUser.id
+    userId: dbUserId
   });
   if (activeTenantId instanceof NextResponse) {
     return activeTenantId;
@@ -111,7 +132,7 @@ export async function POST(request: Request) {
       startDate,
       durationMonths,
       config: body.config === null ? Prisma.JsonNull : ((body.config ?? undefined) as Prisma.InputJsonValue | undefined),
-      ownerId: dbUser.id,
+      ownerId: dbUserId,
       tenantId: activeTenantId
     },
     select: {

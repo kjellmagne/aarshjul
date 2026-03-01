@@ -1,9 +1,9 @@
-# Aarshjul Prototype
+# Aarshjul
 
 Initial milestone for a circular annual planner based on your product scope:
 
 - `packages/wheel-core`: shared geometry/time engine
-- `apps/web`: Next.js demo rendering a static SVG wheel using `wheel-core`
+- `apps/web`: Next.js app rendering a static SVG wheel using `wheel-core`
 - `apps/web/prisma`: persistence model for wheels, sharing, activities, advanced scheduling and reminders
 
 ## Run

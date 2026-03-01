@@ -12,12 +12,16 @@ function normalizeTags(value: unknown): string[] {
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ activityId: string }> }) {
-  const authContext = await getAuthContext();
+  const authContext = await getAuthContext(request);
   if (authContext instanceof NextResponse) {
     return authContext;
   }
 
-  const dbUser = await getOrCreateUserFromContext(authContext);
+  let actorContext = authContext;
+  if (authContext.authMethod === "SESSION") {
+    const dbUser = await getOrCreateUserFromContext(authContext);
+    actorContext = { ...authContext, userId: dbUser.id };
+  }
   const params = await context.params;
   const existing = await prisma.activity.findUnique({ where: { id: params.activityId } });
 
@@ -27,7 +31,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ activ
 
   const hasAccess = await assertWheelAccess({
     wheelId: existing.wheelId,
-    context: { ...authContext, userId: dbUser.id },
+    context: actorContext,
     requiredRole: WheelRole.EDITOR
   });
 
@@ -70,13 +74,17 @@ export async function PATCH(request: Request, context: { params: Promise<{ activ
   return NextResponse.json({ activity });
 }
 
-export async function DELETE(_request: Request, context: { params: Promise<{ activityId: string }> }) {
-  const authContext = await getAuthContext();
+export async function DELETE(request: Request, context: { params: Promise<{ activityId: string }> }) {
+  const authContext = await getAuthContext(request);
   if (authContext instanceof NextResponse) {
     return authContext;
   }
 
-  const dbUser = await getOrCreateUserFromContext(authContext);
+  let actorContext = authContext;
+  if (authContext.authMethod === "SESSION") {
+    const dbUser = await getOrCreateUserFromContext(authContext);
+    actorContext = { ...authContext, userId: dbUser.id };
+  }
   const params = await context.params;
   const existing = await prisma.activity.findUnique({ where: { id: params.activityId } });
 
@@ -86,7 +94,7 @@ export async function DELETE(_request: Request, context: { params: Promise<{ act
 
   const hasAccess = await assertWheelAccess({
     wheelId: existing.wheelId,
-    context: { ...authContext, userId: dbUser.id },
+    context: actorContext,
     requiredRole: WheelRole.EDITOR
   });
 

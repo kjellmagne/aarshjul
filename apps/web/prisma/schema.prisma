@@ -11,6 +11,11 @@ enum ShareTargetType {
   AAD_GROUP
 }
 
+enum ApiKeyScope {
+  SYSTEM
+  TENANT
+}
+
 enum WheelRole {
   VIEWER
   EDITOR
@@ -60,6 +65,7 @@ model User {
   activitiesCreated  Activity[]   @relation("ActivityCreator")
   tenantSettingsUpdated TenantSettings[]  @relation("TenantSettingsUpdatedBy")
   tenantMemberships     TenantMembership[]
+  apiKeysCreated        ApiKey[]          @relation("ApiKeyCreatedBy")
 }
 
 model AzureGroup {
@@ -113,6 +119,31 @@ model Tenant {
 
   wheels      Wheel[]
   memberships TenantMembership[]
+  apiKeys     ApiKey[]
+}
+
+model ApiKey {
+  id         String      @id @default(cuid())
+  scope      ApiKeyScope
+  tenantId   String?
+  name       String
+  prefix     String      @unique
+  secretHash String      @unique
+  createdById String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+  lastUsedAt DateTime?
+  expiresAt  DateTime?
+  revokedAt  DateTime?
+
+  tenant    Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User?   @relation("ApiKeyCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([scope])
+  @@index([tenantId])
+  @@index([createdById])
+  @@index([revokedAt])
+  @@index([expiresAt])
 }
 
 model TenantMembership {

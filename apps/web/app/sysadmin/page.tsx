@@ -50,6 +50,70 @@ type TenantAdminAssignmentModel = {
   };
 };
 
+type ManagedApiKeyModel = {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  createdBy: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  } | null;
+};
+
+function getApiKeyStatus(apiKey: ManagedApiKeyModel): "ACTIVE" | "REVOKED" | "EXPIRED" {
+  if (apiKey.revokedAt) {
+    return "REVOKED";
+  }
+  if (apiKey.expiresAt) {
+    const expiresAt = DateTime.fromISO(apiKey.expiresAt, { zone: "Europe/Oslo" });
+    if (expiresAt.isValid && expiresAt.toMillis() <= Date.now()) {
+      return "EXPIRED";
+    }
+  }
+  return "ACTIVE";
+}
+
+function formatDateTimeOrDash(value: string | null) {
+  if (!value) {
+    return "-";
+  }
+  return formatDateTime(value);
+}
+
+async function copyTextToClipboard(value: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // Continue to fallback.
+    }
+  }
+
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    textarea.style.pointerEvents = "none";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const success = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return success;
+  } catch {
+    return false;
+  }
+}
+
 function formatDateTime(value: string) {
   const date = DateTime.fromISO(value, { zone: "Europe/Oslo" });
   if (!date.isValid) {
@@ -98,6 +162,10 @@ export default function SysAdminPage() {
   const [tenantSlugDraft, setTenantSlugDraft] = useState("");
   const [tenantEditName, setTenantEditName] = useState("");
   const [tenantEditSlug, setTenantEditSlug] = useState("");
+  const [systemApiKeys, setSystemApiKeys] = useState<ManagedApiKeyModel[]>([]);
+  const [apiKeyNameDraft, setApiKeyNameDraft] = useState("");
+  const [apiKeyExpiresAtDraft, setApiKeyExpiresAtDraft] = useState("");
+  const [newPlainTextApiKey, setNewPlainTextApiKey] = useState("");
   const [query, setQuery] = useState("");
   const [newAdminName, setNewAdminName] = useState("");
   const [newAdminEmail, setNewAdminEmail] = useState("");
@@ -109,6 +177,8 @@ export default function SysAdminPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isClaiming, setIsClaiming] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isApiKeyLoading, setIsApiKeyLoading] = useState(false);
+  const [isApiKeySaving, setIsApiKeySaving] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -131,12 +201,14 @@ export default function SysAdminPage() {
     try {
       setIsLoading(true);
       setError("");
-      const [overviewPayload, tenantsPayload] = await Promise.all([
+      const [overviewPayload, tenantsPayload, apiKeysPayload] = await Promise.all([
         requestJson<{ overview: SysAdminOverviewModel }>("/api/sysadmin/overview"),
-        requestJson<{ tenants: TenantModel[] }>("/api/sysadmin/tenants")
+        requestJson<{ tenants: TenantModel[] }>("/api/sysadmin/tenants"),
+        requestJson<{ apiKeys: ManagedApiKeyModel[] }>("/api/sysadmin/api-keys")
       ]);
       setOverview(overviewPayload.overview);
       setTenants(tenantsPayload.tenants ?? []);
+      setSystemApiKeys(apiKeysPayload.apiKeys ?? []);
       if ((tenantsPayload.tenants?.length ?? 0) > 0) {
         setSelectedTenantId((prev) =>
           prev && tenantsPayload.tenants.some((tenant) => tenant.id === prev) ? prev : tenantsPayload.tenants[0]!.id
@@ -150,6 +222,111 @@ export default function SysAdminPage() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function createSystemApiKey() {
+    if (!canLoad) {
+      return;
+    }
+    const name = apiKeyNameDraft.trim();
+    if (!name) {
+      setError("Key name is required.");
+      return;
+    }
+
+    try {
+      setIsApiKeySaving(true);
+      setError("");
+      setNotice("");
+      const expiresIso = apiKeyExpiresAtDraft.trim()
+        ? DateTime.fromISO(apiKeyExpiresAtDraft, { zone: "Europe/Oslo" }).toUTC().toISO()
+        : null;
+      const payload = await requestJson<{ apiKey: ManagedApiKeyModel; plainTextKey: string }>("/api/sysadmin/api-keys", {
+        method: "POST",
+        body: JSON.stringify({
+          name,
+          ...(expiresIso ? { expiresAt: expiresIso } : {})
+        })
+      });
+      setSystemApiKeys((prev) => [payload.apiKey, ...prev.filter((entry) => entry.id !== payload.apiKey.id)]);
+      setApiKeyNameDraft("");
+      setApiKeyExpiresAtDraft("");
+      setNewPlainTextApiKey(payload.plainTextKey);
+      setNotice("System API key created.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create system API key.");
+    } finally {
+      setIsApiKeySaving(false);
+    }
+  }
+
+  async function toggleSystemApiKey(keyId: string, action: "revoke" | "activate") {
+    if (!canLoad || !keyId) {
+      return;
+    }
+    try {
+      setIsApiKeySaving(true);
+      setError("");
+      setNotice("");
+      const payload = await requestJson<{ apiKey: ManagedApiKeyModel }>(`/api/sysadmin/api-keys/${encodeURIComponent(keyId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ action })
+      });
+      setSystemApiKeys((prev) => prev.map((entry) => (entry.id === keyId ? payload.apiKey : entry)));
+      setNotice("System API key updated.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update system API key.");
+    } finally {
+      setIsApiKeySaving(false);
+    }
+  }
+
+  async function deleteSystemApiKey(keyId: string) {
+    if (!canLoad || !keyId) {
+      return;
+    }
+    const confirmed = window.confirm("Delete this system API key permanently?");
+    if (!confirmed) {
+      return;
+    }
+    try {
+      setIsApiKeySaving(true);
+      setError("");
+      setNotice("");
+      await requestJson<{ deleted: boolean }>(`/api/sysadmin/api-keys/${encodeURIComponent(keyId)}`, {
+        method: "DELETE"
+      });
+      setSystemApiKeys((prev) => prev.filter((entry) => entry.id !== keyId));
+      setNotice("System API key deleted.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete system API key.");
+    } finally {
+      setIsApiKeySaving(false);
+    }
+  }
+
+  async function reloadSystemApiKeys() {
+    if (!canLoad) {
+      return;
+    }
+    try {
+      setIsApiKeyLoading(true);
+      const payload = await requestJson<{ apiKeys: ManagedApiKeyModel[] }>("/api/sysadmin/api-keys");
+      setSystemApiKeys(payload.apiKeys ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load system API keys.");
+      setSystemApiKeys([]);
+    } finally {
+      setIsApiKeyLoading(false);
+    }
+  }
+
+  async function copyNewApiKey() {
+    if (!newPlainTextApiKey) {
+      return;
+    }
+    const copied = await copyTextToClipboard(newPlainTextApiKey);
+    setNotice(copied ? "API key copied." : "Could not copy API key.");
   }
 
   useEffect(() => {
@@ -503,6 +680,9 @@ export default function SysAdminPage() {
           <button type="button" onClick={() => void loadAll()} disabled={isLoading || isUpdating}>
             Refresh
           </button>
+          <Link href="/api/docs" className="admin-link-button" target="_blank" rel="noreferrer">
+            API docs
+          </Link>
           <Link href="/" className="admin-link-button">
             Back to app
           </Link>
@@ -566,6 +746,113 @@ export default function SysAdminPage() {
         ) : (
           <p className="admin-meta">No overview data loaded yet.</p>
         )}
+      </section>
+
+      <section className="admin-shell-panel">
+        <header className="admin-section-header">
+          <h2>System API keys</h2>
+          <p>Keys for system-level integrations across tenants.</p>
+        </header>
+
+        <div className="admin-form-grid">
+          <label>
+            Key name
+            <input
+              value={apiKeyNameDraft}
+              onChange={(event) => setApiKeyNameDraft(event.target.value)}
+              placeholder="platform-integration"
+            />
+          </label>
+          <label>
+            Expires at (optional)
+            <input
+              type="datetime-local"
+              value={apiKeyExpiresAtDraft}
+              onChange={(event) => setApiKeyExpiresAtDraft(event.target.value)}
+            />
+          </label>
+        </div>
+
+        <div className="admin-section-actions">
+          <button
+            type="button"
+            onClick={() => void createSystemApiKey()}
+            disabled={isApiKeySaving || !apiKeyNameDraft.trim()}
+          >
+            Create system API key
+          </button>
+          <button type="button" className="secondary" onClick={() => void reloadSystemApiKeys()} disabled={isApiKeyLoading || isApiKeySaving}>
+            Reload keys
+          </button>
+        </div>
+
+        {newPlainTextApiKey ? (
+          <div className="api-key-created-box">
+            <p className="admin-meta">New API key (shown once)</p>
+            <code>{newPlainTextApiKey}</code>
+            <div className="admin-section-actions">
+              <button type="button" className="secondary" onClick={() => void copyNewApiKey()}>
+                Copy
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="api-key-list">
+          {systemApiKeys.length > 0 ? (
+            systemApiKeys.map((apiKey) => {
+              const status = getApiKeyStatus(apiKey);
+              const statusLabel = status === "ACTIVE" ? "Active" : status === "REVOKED" ? "Revoked" : "Expired";
+              const createdBy = apiKey.createdBy?.name || apiKey.createdBy?.email || "-";
+              return (
+                <article key={apiKey.id} className="api-key-row">
+                  <header>
+                    <h4>{apiKey.name}</h4>
+                    <p>Status: {statusLabel}</p>
+                  </header>
+                  <p>
+                    Prefix: <code>{apiKey.prefix}</code>
+                  </p>
+                  <p>Created: {formatDateTime(apiKey.createdAt)}</p>
+                  <p>Last used: {formatDateTimeOrDash(apiKey.lastUsedAt)}</p>
+                  <p>Expires: {formatDateTimeOrDash(apiKey.expiresAt)}</p>
+                  <p>Created by: {createdBy}</p>
+                  <div className="admin-user-actions">
+                    {status === "REVOKED" ? (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => void toggleSystemApiKey(apiKey.id, "activate")}
+                        disabled={isApiKeySaving || isApiKeyLoading}
+                      >
+                        Activate
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() => void toggleSystemApiKey(apiKey.id, "revoke")}
+                        disabled={isApiKeySaving || isApiKeyLoading || status === "EXPIRED"}
+                      >
+                        Revoke
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="secondary"
+                      onClick={() => void deleteSystemApiKey(apiKey.id)}
+                      disabled={isApiKeySaving || isApiKeyLoading}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </article>
+              );
+            })
+          ) : (
+            <p className="admin-empty">{isApiKeyLoading ? "Loading..." : "No system API keys yet."}</p>
+          )}
+        </div>
       </section>
 
       <section className="admin-shell-panel">

@@ -4,18 +4,22 @@ import { NextResponse } from "next/server";
 import { assertWheelAccess, getAuthContext, getOrCreateUserFromContext } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 
-export async function GET(_request: Request, context: { params: Promise<{ wheelId: string }> }) {
-  const authContext = await getAuthContext();
+export async function GET(request: Request, context: { params: Promise<{ wheelId: string }> }) {
+  const authContext = await getAuthContext(request);
   if (authContext instanceof NextResponse) {
     return authContext;
   }
 
-  const dbUser = await getOrCreateUserFromContext(authContext);
+  let actorContext = authContext;
+  if (authContext.authMethod === "SESSION") {
+    const dbUser = await getOrCreateUserFromContext(authContext);
+    actorContext = { ...authContext, userId: dbUser.id };
+  }
   const params = await context.params;
 
   const hasAccess = await assertWheelAccess({
     wheelId: params.wheelId,
-    context: { ...authContext, userId: dbUser.id },
+    context: actorContext,
     requiredRole: WheelRole.VIEWER
   });
 
@@ -46,17 +50,21 @@ export async function GET(_request: Request, context: { params: Promise<{ wheelI
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ wheelId: string }> }) {
-  const authContext = await getAuthContext();
+  const authContext = await getAuthContext(request);
   if (authContext instanceof NextResponse) {
     return authContext;
   }
 
-  const dbUser = await getOrCreateUserFromContext(authContext);
+  let actorContext = authContext;
+  if (authContext.authMethod === "SESSION") {
+    const dbUser = await getOrCreateUserFromContext(authContext);
+    actorContext = { ...authContext, userId: dbUser.id };
+  }
   const params = await context.params;
 
   const hasAccess = await assertWheelAccess({
     wheelId: params.wheelId,
-    context: { ...authContext, userId: dbUser.id },
+    context: actorContext,
     requiredRole: WheelRole.EDITOR
   });
 
@@ -94,7 +102,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ wheel
     data.durationMonths = body.durationMonths;
   }
 
-  if (Object.prototype.hasOwnProperty.call(body, "config")) {
+  if (Object.hasOwn(body, "config")) {
     data.config =
       body.config === null
         ? Prisma.JsonNull
@@ -119,18 +127,22 @@ export async function PATCH(request: Request, context: { params: Promise<{ wheel
   return NextResponse.json({ wheel });
 }
 
-export async function DELETE(_request: Request, context: { params: Promise<{ wheelId: string }> }) {
-  const authContext = await getAuthContext();
+export async function DELETE(request: Request, context: { params: Promise<{ wheelId: string }> }) {
+  const authContext = await getAuthContext(request);
   if (authContext instanceof NextResponse) {
     return authContext;
   }
 
-  const dbUser = await getOrCreateUserFromContext(authContext);
+  let actorContext = authContext;
+  if (authContext.authMethod === "SESSION") {
+    const dbUser = await getOrCreateUserFromContext(authContext);
+    actorContext = { ...authContext, userId: dbUser.id };
+  }
   const params = await context.params;
 
   const hasAccess = await assertWheelAccess({
     wheelId: params.wheelId,
-    context: { ...authContext, userId: dbUser.id },
+    context: actorContext,
     requiredRole: WheelRole.OWNER
   });
 

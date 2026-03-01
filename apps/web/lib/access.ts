@@ -1,10 +1,22 @@
-import { WheelRole, type User } from "@prisma/client";
+import { ApiKeyScope, WheelRole, type User } from "@prisma/client";
 import { NextResponse } from "next/server";
 
+import { hashApiKey } from "@/lib/api-keys";
 import { isBootstrapAdminEmail, isBootstrapSystemAdminEmail } from "@/lib/admin";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { ensureDefaultTenant } from "@/lib/tenant";
+
+export type ApiKeyPrincipal = {
+  id: string;
+  scope: ApiKeyScope;
+  tenantId: string | null;
+  name: string;
+  createdById: string | null;
+  createdByEmail: string | null;
+  createdByIsAdmin: boolean;
+  createdByIsSystemAdmin: boolean;
+};
 
 export type AuthContext = {
   userId: string;
@@ -13,6 +25,8 @@ export type AuthContext = {
   isAdmin: boolean;
   isSystemAdmin: boolean;
   activeTenantId: string | null;
+  authMethod: "SESSION" | "API_KEY";
+  apiKey: ApiKeyPrincipal | null;
 };
 
 function allowedRoles(requiredRole: WheelRole): WheelRole[] {
@@ -25,7 +39,105 @@ function allowedRoles(requiredRole: WheelRole): WheelRole[] {
   return [WheelRole.VIEWER, WheelRole.EDITOR, WheelRole.OWNER];
 }
 
-export async function getAuthContext(): Promise<AuthContext | NextResponse> {
+function readRequestApiKey(request: Request): string | null {
+  const rawHeaderKey = request.headers.get("x-api-key")?.trim();
+  if (rawHeaderKey) {
+    return rawHeaderKey;
+  }
+  const authorization = request.headers.get("authorization")?.trim() ?? "";
+  if (!authorization) {
+    return null;
+  }
+  const match = authorization.match(/^Bearer\s+(.+)$/i);
+  if (!match?.[1]) {
+    return null;
+  }
+  return match[1].trim() || null;
+}
+
+export async function getApiKeyPrincipalFromRequest(
+  request: Request,
+  params?: { requiredScope?: ApiKeyScope }
+): Promise<ApiKeyPrincipal | NextResponse | null> {
+  const rawKey = readRequestApiKey(request);
+  if (!rawKey) {
+    return null;
+  }
+
+  const hashedKey = hashApiKey(rawKey);
+  const now = new Date();
+  const apiKey = await prisma.apiKey.findFirst({
+    where: {
+      secretHash: hashedKey,
+      revokedAt: null,
+      OR: [{ expiresAt: null }, { expiresAt: { gt: now } }]
+    },
+    select: {
+      id: true,
+      scope: true,
+      tenantId: true,
+      name: true,
+      createdById: true,
+      createdBy: {
+        select: {
+          email: true,
+          isAdmin: true,
+          isSystemAdmin: true
+        }
+      }
+    }
+  });
+
+  if (!apiKey) {
+    return NextResponse.json({ error: "Invalid or expired API key." }, { status: 401 });
+  }
+
+  if (params?.requiredScope && apiKey.scope !== params.requiredScope) {
+    return NextResponse.json({ error: "API key scope does not match this endpoint." }, { status: 403 });
+  }
+
+  await prisma.apiKey
+    .update({
+      where: { id: apiKey.id },
+      data: { lastUsedAt: now }
+    })
+    .catch(() => null);
+
+  return {
+    id: apiKey.id,
+    scope: apiKey.scope,
+    tenantId: apiKey.tenantId,
+    name: apiKey.name,
+    createdById: apiKey.createdById,
+    createdByEmail: apiKey.createdBy?.email ?? null,
+    createdByIsAdmin: Boolean(apiKey.createdBy?.isAdmin),
+    createdByIsSystemAdmin: Boolean(apiKey.createdBy?.isSystemAdmin)
+  };
+}
+
+export async function getAuthContext(request?: Request): Promise<AuthContext | NextResponse> {
+  if (request) {
+    const apiKeyPrincipal = await getApiKeyPrincipalFromRequest(request);
+    if (apiKeyPrincipal instanceof NextResponse) {
+      return apiKeyPrincipal;
+    }
+    if (apiKeyPrincipal) {
+      return {
+        userId: apiKeyPrincipal.createdById ?? "",
+        email: apiKeyPrincipal.createdByEmail,
+        groups: [],
+        isAdmin:
+          apiKeyPrincipal.scope === ApiKeyScope.TENANT ||
+          apiKeyPrincipal.createdByIsAdmin ||
+          apiKeyPrincipal.createdByIsSystemAdmin,
+        isSystemAdmin: apiKeyPrincipal.scope === ApiKeyScope.SYSTEM || apiKeyPrincipal.createdByIsSystemAdmin,
+        activeTenantId: apiKeyPrincipal.scope === ApiKeyScope.TENANT ? apiKeyPrincipal.tenantId : null,
+        authMethod: "API_KEY",
+        apiKey: apiKeyPrincipal
+      };
+    }
+  }
+
   const session = await auth();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -37,11 +149,28 @@ export async function getAuthContext(): Promise<AuthContext | NextResponse> {
     groups: session.user.groups ?? [],
     isAdmin: Boolean(session.user.isAdmin),
     isSystemAdmin: Boolean(session.user.isSystemAdmin),
-    activeTenantId: session.user.activeTenantId ?? null
+    activeTenantId: session.user.activeTenantId ?? null,
+    authMethod: "SESSION",
+    apiKey: null
   };
 }
 
 export async function getOrCreateUserFromContext(context: AuthContext): Promise<User> {
+  if (context.authMethod === "API_KEY") {
+    const createdById = context.apiKey?.createdById ?? null;
+    if (!createdById) {
+      throw new Error("API key is not bound to an active user.");
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { id: createdById }
+    });
+    if (!existingUser) {
+      throw new Error("API key creator account does not exist.");
+    }
+    return existingUser;
+  }
+
   if (!context.email) {
     throw new Error("Signed-in user is missing email claim.");
   }
@@ -120,6 +249,13 @@ export async function assertActiveTenantAccess(params: {
   context: AuthContext;
   userId: string;
 }): Promise<string | NextResponse> {
+  if (params.context.authMethod === "API_KEY") {
+    if (params.context.apiKey?.scope !== ApiKeyScope.TENANT || !params.context.apiKey.tenantId) {
+      return NextResponse.json({ error: "Tenant-scoped API key is required." }, { status: 403 });
+    }
+    return params.context.apiKey.tenantId;
+  }
+
   const activeTenantId = params.context.activeTenantId?.trim() || null;
   if (!activeTenantId) {
     return NextResponse.json({ error: "No active tenant selected." }, { status: 400 });
@@ -163,6 +299,20 @@ export async function assertWheelAccess(params: {
   requiredRole?: WheelRole;
 }) {
   const { wheelId, context, requiredRole = WheelRole.VIEWER } = params;
+  if (context.authMethod === "API_KEY") {
+    const tenantId = context.apiKey?.scope === ApiKeyScope.TENANT ? context.apiKey.tenantId : null;
+    if (!tenantId) {
+      return null;
+    }
+    return prisma.wheel.findFirst({
+      where: {
+        id: wheelId,
+        tenantId
+      },
+      select: { id: true, ownerId: true, tenantId: true }
+    });
+  }
+
   if (!context.activeTenantId) {
     return null;
   }

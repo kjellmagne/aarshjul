@@ -40,13 +40,17 @@ function sanitizeEmails(values: unknown): string[] {
   return [...new Set(values.map((value) => String(value).trim().toLowerCase()).filter(Boolean))].slice(0, 25);
 }
 
-export async function GET(_request: Request, context: { params: Promise<{ activityId: string }> }) {
-  const authContext = await getAuthContext();
+export async function GET(request: Request, context: { params: Promise<{ activityId: string }> }) {
+  const authContext = await getAuthContext(request);
   if (authContext instanceof NextResponse) {
     return authContext;
   }
 
-  const dbUser = await getOrCreateUserFromContext(authContext);
+  let actorContext = authContext;
+  if (authContext.authMethod === "SESSION") {
+    const dbUser = await getOrCreateUserFromContext(authContext);
+    actorContext = { ...authContext, userId: dbUser.id };
+  }
   const params = await context.params;
 
   const activity = await prisma.activity.findUnique({
@@ -60,7 +64,7 @@ export async function GET(_request: Request, context: { params: Promise<{ activi
 
   const hasAccess = await assertWheelAccess({
     wheelId: activity.wheelId,
-    context: { ...authContext, userId: dbUser.id },
+    context: actorContext,
     requiredRole: WheelRole.VIEWER
   });
 
@@ -74,12 +78,16 @@ export async function GET(_request: Request, context: { params: Promise<{ activi
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ activityId: string }> }) {
-  const authContext = await getAuthContext();
+  const authContext = await getAuthContext(request);
   if (authContext instanceof NextResponse) {
     return authContext;
   }
 
-  const dbUser = await getOrCreateUserFromContext(authContext);
+  let actorContext = authContext;
+  if (authContext.authMethod === "SESSION") {
+    const dbUser = await getOrCreateUserFromContext(authContext);
+    actorContext = { ...authContext, userId: dbUser.id };
+  }
   const params = await context.params;
 
   const activity = await prisma.activity.findUnique({
@@ -92,7 +100,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ activ
 
   const hasAccess = await assertWheelAccess({
     wheelId: activity.wheelId,
-    context: { ...authContext, userId: dbUser.id },
+    context: actorContext,
     requiredRole: WheelRole.EDITOR
   });
 

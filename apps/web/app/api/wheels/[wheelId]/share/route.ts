@@ -15,17 +15,21 @@ function toWheelRole(value: string | undefined): WheelRole {
   return WheelRole.VIEWER;
 }
 
-export async function GET(_request: Request, context: { params: Promise<{ wheelId: string }> }) {
-  const authContext = await getAuthContext();
+export async function GET(request: Request, context: { params: Promise<{ wheelId: string }> }) {
+  const authContext = await getAuthContext(request);
   if (authContext instanceof NextResponse) {
     return authContext;
   }
 
-  const dbUser = await getOrCreateUserFromContext(authContext);
+  let actorContext = authContext;
+  if (authContext.authMethod === "SESSION") {
+    const dbUser = await getOrCreateUserFromContext(authContext);
+    actorContext = { ...authContext, userId: dbUser.id };
+  }
   const params = await context.params;
   const wheel = await assertWheelAccess({
     wheelId: params.wheelId,
-    context: { ...authContext, userId: dbUser.id },
+    context: actorContext,
     requiredRole: WheelRole.EDITOR
   });
 
@@ -62,16 +66,27 @@ export async function GET(_request: Request, context: { params: Promise<{ wheelI
 }
 
 export async function POST(request: Request, context: { params: Promise<{ wheelId: string }> }) {
-  const authContext = await getAuthContext();
+  const authContext = await getAuthContext(request);
   if (authContext instanceof NextResponse) {
     return authContext;
   }
 
-  const dbUser = await getOrCreateUserFromContext(authContext);
+  let actorContext = authContext;
+  let actorUserId: string | null = null;
+  try {
+    const dbUser = await getOrCreateUserFromContext(authContext);
+    actorUserId = dbUser.id;
+    actorContext = { ...authContext, userId: dbUser.id };
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "API key creator account is required." },
+      { status: 400 }
+    );
+  }
   const params = await context.params;
   const wheel = await assertWheelAccess({
     wheelId: params.wheelId,
-    context: { ...authContext, userId: dbUser.id },
+    context: actorContext,
     requiredRole: WheelRole.OWNER
   });
 
@@ -141,7 +156,7 @@ export async function POST(request: Request, context: { params: Promise<{ wheelI
           targetType: "USER",
           role,
           userId: targetUser.id,
-          createdById: dbUser.id
+          createdById: actorUserId
         },
         select: {
           id: true,
@@ -197,7 +212,7 @@ export async function POST(request: Request, context: { params: Promise<{ wheelI
         targetType: "AAD_GROUP",
         role,
         groupId: group.id,
-        createdById: dbUser.id
+        createdById: actorUserId
       },
       select: {
         id: true,
@@ -218,16 +233,20 @@ export async function POST(request: Request, context: { params: Promise<{ wheelI
 }
 
 export async function DELETE(request: Request, context: { params: Promise<{ wheelId: string }> }) {
-  const authContext = await getAuthContext();
+  const authContext = await getAuthContext(request);
   if (authContext instanceof NextResponse) {
     return authContext;
   }
 
-  const dbUser = await getOrCreateUserFromContext(authContext);
+  let actorContext = authContext;
+  if (authContext.authMethod === "SESSION") {
+    const dbUser = await getOrCreateUserFromContext(authContext);
+    actorContext = { ...authContext, userId: dbUser.id };
+  }
   const params = await context.params;
   const wheel = await assertWheelAccess({
     wheelId: params.wheelId,
-    context: { ...authContext, userId: dbUser.id },
+    context: actorContext,
     requiredRole: WheelRole.OWNER
   });
 

@@ -266,6 +266,22 @@ type AdminTenantSettingsModel = {
   updatedBy: null;
 };
 
+type ManagedApiKeyModel = {
+  id: string;
+  name: string;
+  prefix: string;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt: string | null;
+  expiresAt: string | null;
+  revokedAt: string | null;
+  createdBy: {
+    id: string;
+    name: string | null;
+    email: string | null;
+  } | null;
+};
+
 type UserTenantMembershipModel = {
   tenantId: string;
   role: "MEMBER" | "ADMIN";
@@ -353,6 +369,9 @@ const UI_TEXT: Record<
     settingsTitle: string;
     closeSettings: string;
     settingsPersonalHint: string;
+    apiDocsTitle: string;
+    apiDocsHint: string;
+    openApiDocs: string;
     theme: string;
     language: string;
     languageNb: string;
@@ -498,6 +517,13 @@ const UI_TEXT: Record<
     shareUserField: string;
     shareUserPickerField: string;
     shareUserPickerPlaceholder: string;
+    shareUserSearchField: string;
+    shareUserSearchPlaceholder: string;
+    shareUsersTableName: string;
+    shareUsersTableEmail: string;
+    shareUsersTableAccess: string;
+    shareUsersTableActions: string;
+    shareUsersTableNotShared: string;
     shareUserPlaceholder: string;
     shareUserAction: string;
     shareGroupField: string;
@@ -546,6 +572,30 @@ const UI_TEXT: Record<
     smtpTestAction: string;
     smtpSaved: string;
     smtpTestSent: string;
+    apiKeysTitle: string;
+    apiKeysHint: string;
+    apiKeyNameField: string;
+    apiKeyExpiresAtField: string;
+    apiKeyCreateAction: string;
+    apiKeyCreatedLabel: string;
+    apiKeyCopy: string;
+    apiKeyRevoke: string;
+    apiKeyActivate: string;
+    apiKeyDelete: string;
+    apiKeyDeleteConfirm: string;
+    apiKeyNoKeys: string;
+    apiKeyStatusField: string;
+    apiKeyStatusActive: string;
+    apiKeyStatusRevoked: string;
+    apiKeyStatusExpired: string;
+    apiKeyPrefixField: string;
+    apiKeyCreatedAtField: string;
+    apiKeyLastUsedAtField: string;
+    apiKeyCreatedByField: string;
+    apiKeyNeverUsed: string;
+    apiKeyNeverExpires: string;
+    apiKeyCopied: string;
+    apiKeyCopyFailed: string;
     adminOverviewTitle: string;
     adminUsersTitle: string;
     adminTotalUsers: string;
@@ -626,6 +676,9 @@ const UI_TEXT: Record<
     settingsTitle: "Innstillinger",
     closeSettings: "Lukk innstillinger",
     settingsPersonalHint: "Personlige visningsvalg for din bruker.",
+    apiDocsTitle: "API-dokumentasjon",
+    apiDocsHint: "Swagger-lignende dokumentasjon for integrasjoner.",
+    openApiDocs: "Aapne API docs",
     theme: "Fargetema",
     language: "Sprak",
     languageNb: "Norsk",
@@ -771,6 +824,13 @@ const UI_TEXT: Record<
     shareUserField: "Del med bruker",
     shareUserPickerField: "Velg bruker",
     shareUserPickerPlaceholder: "Velg en bruker",
+    shareUserSearchField: "Søk bruker",
+    shareUserSearchPlaceholder: "Søk på navn eller e-post",
+    shareUsersTableName: "Navn",
+    shareUsersTableEmail: "E-post",
+    shareUsersTableAccess: "Tilgang",
+    shareUsersTableActions: "Handlinger",
+    shareUsersTableNotShared: "Ikke delt",
     shareUserPlaceholder: "bruker@domene.no",
     shareUserAction: "Del",
     shareGroupField: "Del med AAD-gruppe",
@@ -819,6 +879,30 @@ const UI_TEXT: Record<
     smtpTestAction: "Send test-e-post",
     smtpSaved: "E-postoppsett lagret.",
     smtpTestSent: "Test-e-post sendt.",
+    apiKeysTitle: "API-nøkler",
+    apiKeysHint: "Opprett og administrer API-nøkler for denne tenanten.",
+    apiKeyNameField: "Nøkkelnavn",
+    apiKeyExpiresAtField: "Utløper (valgfri)",
+    apiKeyCreateAction: "Opprett API-nøkkel",
+    apiKeyCreatedLabel: "Ny API-nøkkel (vises kun én gang)",
+    apiKeyCopy: "Kopier",
+    apiKeyRevoke: "Trekk tilbake",
+    apiKeyActivate: "Aktiver",
+    apiKeyDelete: "Slett",
+    apiKeyDeleteConfirm: "Slette denne API-nøkkelen permanent?",
+    apiKeyNoKeys: "Ingen API-nøkler ennå.",
+    apiKeyStatusField: "Status",
+    apiKeyStatusActive: "Aktiv",
+    apiKeyStatusRevoked: "Tilbaketrukket",
+    apiKeyStatusExpired: "Utløpt",
+    apiKeyPrefixField: "Prefiks",
+    apiKeyCreatedAtField: "Opprettet",
+    apiKeyLastUsedAtField: "Sist brukt",
+    apiKeyCreatedByField: "Opprettet av",
+    apiKeyNeverUsed: "Aldri brukt",
+    apiKeyNeverExpires: "Ingen utløp",
+    apiKeyCopied: "API-nøkkel kopiert",
+    apiKeyCopyFailed: "Kunne ikke kopiere API-nøkkel",
     adminOverviewTitle: "Oversikt",
     adminUsersTitle: "Kontoer",
     adminTotalUsers: "Brukere",
@@ -898,6 +982,9 @@ const UI_TEXT: Record<
     settingsTitle: "Settings",
     closeSettings: "Close settings",
     settingsPersonalHint: "Personal viewing preferences for your user.",
+    apiDocsTitle: "API documentation",
+    apiDocsHint: "Swagger-style documentation for integrations.",
+    openApiDocs: "Open API docs",
     theme: "Color theme",
     language: "Language",
     languageNb: "Norwegian",
@@ -1043,6 +1130,13 @@ const UI_TEXT: Record<
     shareUserField: "Share with user",
     shareUserPickerField: "Pick user",
     shareUserPickerPlaceholder: "Select a user",
+    shareUserSearchField: "Search user",
+    shareUserSearchPlaceholder: "Search by name or e-mail",
+    shareUsersTableName: "Name",
+    shareUsersTableEmail: "E-mail",
+    shareUsersTableAccess: "Access",
+    shareUsersTableActions: "Actions",
+    shareUsersTableNotShared: "Not shared",
     shareUserPlaceholder: "user@domain.com",
     shareUserAction: "Share",
     shareGroupField: "Share with AAD group",
@@ -1091,6 +1185,30 @@ const UI_TEXT: Record<
     smtpTestAction: "Send test e-mail",
     smtpSaved: "E-mail setup saved.",
     smtpTestSent: "Test e-mail sent.",
+    apiKeysTitle: "API keys",
+    apiKeysHint: "Create and manage API keys for this tenant.",
+    apiKeyNameField: "Key name",
+    apiKeyExpiresAtField: "Expires at (optional)",
+    apiKeyCreateAction: "Create API key",
+    apiKeyCreatedLabel: "New API key (shown once)",
+    apiKeyCopy: "Copy",
+    apiKeyRevoke: "Revoke",
+    apiKeyActivate: "Activate",
+    apiKeyDelete: "Delete",
+    apiKeyDeleteConfirm: "Delete this API key permanently?",
+    apiKeyNoKeys: "No API keys yet.",
+    apiKeyStatusField: "Status",
+    apiKeyStatusActive: "Active",
+    apiKeyStatusRevoked: "Revoked",
+    apiKeyStatusExpired: "Expired",
+    apiKeyPrefixField: "Prefix",
+    apiKeyCreatedAtField: "Created",
+    apiKeyLastUsedAtField: "Last used",
+    apiKeyCreatedByField: "Created by",
+    apiKeyNeverUsed: "Never used",
+    apiKeyNeverExpires: "No expiry",
+    apiKeyCopied: "API key copied",
+    apiKeyCopyFailed: "Could not copy API key",
     adminOverviewTitle: "Overview",
     adminUsersTitle: "Accounts",
     adminTotalUsers: "Users",
@@ -1512,6 +1630,61 @@ function toDateTimeLocalValue(iso: string, timezone = TIMEZONE): string {
   return date.toFormat("yyyy-LL-dd'T'HH:mm");
 }
 
+function formatAdminDateTime(value: string | null, language: AppLanguage): string {
+  if (!value) {
+    return "-";
+  }
+  const date = DateTime.fromISO(value, { zone: TIMEZONE });
+  if (!date.isValid) {
+    return value;
+  }
+  if (language === "nb") {
+    return date.toFormat("dd.LL.yyyy HH:mm");
+  }
+  return date.toFormat("yyyy-LL-dd HH:mm");
+}
+
+function getManagedApiKeyStatus(apiKey: ManagedApiKeyModel): "ACTIVE" | "REVOKED" | "EXPIRED" {
+  if (apiKey.revokedAt) {
+    return "REVOKED";
+  }
+  if (apiKey.expiresAt) {
+    const expiresAt = DateTime.fromISO(apiKey.expiresAt, { zone: TIMEZONE });
+    if (expiresAt.isValid && expiresAt.toMillis() <= Date.now()) {
+      return "EXPIRED";
+    }
+  }
+  return "ACTIVE";
+}
+
+async function copyTextToClipboard(value: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      return true;
+    } catch {
+      // Continue to legacy fallback.
+    }
+  }
+
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = value;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    textarea.style.pointerEvents = "none";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const success = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return success;
+  } catch {
+    return false;
+  }
+}
+
 function createDefaultSchedule(slotEndAt: string): ActivityScheduleDraft {
   return {
     cadence: "ONCE",
@@ -1845,9 +2018,8 @@ export default function Page() {
   const [activeWheelId, setActiveWheelId] = useState<string | null>(null);
   const [shares, setShares] = useState<ShareEntry[]>([]);
   const [shareRole, setShareRole] = useState<"VIEWER" | "EDITOR" | "OWNER">("VIEWER");
-  const [shareUserEmail, setShareUserEmail] = useState("");
   const [shareableUsers, setShareableUsers] = useState<ShareableUserOptionModel[]>([]);
-  const [shareUserSelectionEmail, setShareUserSelectionEmail] = useState("");
+  const [shareUserFilterQuery, setShareUserFilterQuery] = useState("");
   const [shareGroupId, setShareGroupId] = useState("");
   const [isSharingBusy, setIsSharingBusy] = useState(false);
   const [isHydratingWheel, setIsHydratingWheel] = useState(false);
@@ -1929,6 +2101,13 @@ export default function Page() {
   const [smtpReplyTo, setSmtpReplyTo] = useState("");
   const [smtpTestTo, setSmtpTestTo] = useState("");
   const [smtpNotice, setSmtpNotice] = useState("");
+  const [tenantApiKeys, setTenantApiKeys] = useState<ManagedApiKeyModel[]>([]);
+  const [apiKeyNameDraft, setApiKeyNameDraft] = useState("");
+  const [apiKeyExpiresAtDraft, setApiKeyExpiresAtDraft] = useState("");
+  const [tenantApiKeyPlainText, setTenantApiKeyPlainText] = useState("");
+  const [isApiKeyLoading, setIsApiKeyLoading] = useState(false);
+  const [isApiKeySaving, setIsApiKeySaving] = useState(false);
+  const [apiKeyNotice, setApiKeyNotice] = useState("");
   const [draftTagIds, setDraftTagIds] = useState<string[]>([]);
   const [newTagLabel, setNewTagLabel] = useState("");
   const [newTagDescription, setNewTagDescription] = useState("");
@@ -2305,6 +2484,19 @@ export default function Page() {
       return Boolean(matchesQuery && matchesRole && matchesStatus);
     });
   }, [adminUsers, userAdminFilterQuery, userAdminFilterRole, userAdminFilterStatus]);
+  const userSharesByEmail = useMemo(() => {
+    const entries = shares.filter((entry) => entry.targetType === "USER" && entry.user?.email);
+    return new Map(entries.map((entry) => [entry.user!.email!.toLowerCase(), entry] as const));
+  }, [shares]);
+  const filteredShareableUsers = useMemo(() => {
+    const query = shareUserFilterQuery.trim().toLowerCase();
+    return shareableUsers.filter((user) => {
+      if (!query) {
+        return true;
+      }
+      return Boolean(user.name?.toLowerCase().includes(query) || user.email?.toLowerCase().includes(query));
+    });
+  }, [shareableUsers, shareUserFilterQuery]);
 
   async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Promise<T> {
     const response = await fetch(input, {
@@ -2473,28 +2665,14 @@ export default function Page() {
   async function loadShareableUsers() {
     if (status !== "authenticated" || !activeTenantId) {
       setShareableUsers([]);
-      setShareUserSelectionEmail("");
-      setShareUserEmail("");
       return;
     }
 
     try {
       const payload = await requestJson<{ users: ShareableUserOptionModel[] }>("/api/tenant/users");
-      const nextUsers = payload.users ?? [];
-      setShareableUsers(nextUsers);
-      setShareUserSelectionEmail((previous) => {
-        if (previous && nextUsers.some((user) => user.email === previous)) {
-          setShareUserEmail(previous);
-          return previous;
-        }
-        const firstEmail = nextUsers[0]?.email ?? "";
-        setShareUserEmail(firstEmail);
-        return firstEmail;
-      });
+      setShareableUsers(payload.users ?? []);
     } catch {
       setShareableUsers([]);
-      setShareUserSelectionEmail("");
-      setShareUserEmail("");
     }
   }
 
@@ -2654,8 +2832,8 @@ export default function Page() {
     }
   }
 
-  async function shareWithUser() {
-    const selectedEmail = (shareUserSelectionEmail || shareUserEmail).trim();
+  async function shareWithUser(userEmail: string) {
+    const selectedEmail = userEmail.trim();
     if (!activeWheelId || !selectedEmail) {
       return;
     }
@@ -2670,8 +2848,6 @@ export default function Page() {
           userEmail: selectedEmail
         })
       });
-      setShareUserSelectionEmail("");
-      setShareUserEmail("");
       await loadShareableUsers();
       await loadShares(activeWheelId);
     } catch (error) {
@@ -2754,6 +2930,11 @@ export default function Page() {
       setSmtpReplyTo("");
       setSmtpTestTo("");
       setSmtpNotice("");
+      setTenantApiKeys([]);
+      setApiKeyNameDraft("");
+      setApiKeyExpiresAtDraft("");
+      setTenantApiKeyPlainText("");
+      setApiKeyNotice("");
       return;
     }
 
@@ -2774,6 +2955,30 @@ export default function Page() {
     setSmtpReplyTo(settings.smtpReplyTo ?? "");
     setSmtpTestTo((session?.user?.email ?? settings.supportEmail ?? "").trim());
     setSmtpNotice("");
+  }
+
+  async function loadTenantApiKeys(tenantId: string) {
+    if (!tenantId) {
+      setTenantApiKeys([]);
+      setApiKeyNameDraft("");
+      setApiKeyExpiresAtDraft("");
+      setTenantApiKeyPlainText("");
+      setApiKeyNotice("");
+      return;
+    }
+
+    try {
+      setIsApiKeyLoading(true);
+      const payload = await requestJson<{ apiKeys: ManagedApiKeyModel[] }>(
+        `/api/admin/tenant/api-keys?tenantId=${encodeURIComponent(tenantId)}`
+      );
+      setTenantApiKeys(payload.apiKeys ?? []);
+    } catch (error) {
+      setAdminError(error instanceof Error && error.message ? error.message : text.wheelSaveFailed);
+      setTenantApiKeys([]);
+    } finally {
+      setIsApiKeyLoading(false);
+    }
   }
 
   async function saveAzureSetupForTenant() {
@@ -2875,6 +3080,103 @@ export default function Page() {
     }
   }
 
+  async function createTenantApiKey() {
+    if (!canUseAdminSetup || !activeAdminTenantId) {
+      return;
+    }
+    const name = apiKeyNameDraft.trim();
+    if (!name) {
+      return;
+    }
+
+    try {
+      setIsApiKeySaving(true);
+      setAdminError("");
+      setApiKeyNotice("");
+
+      const expiresIso = apiKeyExpiresAtDraft.trim()
+        ? DateTime.fromISO(apiKeyExpiresAtDraft, { zone: TIMEZONE }).toUTC().toISO()
+        : null;
+      const payload = await requestJson<{ apiKey: ManagedApiKeyModel; plainTextKey: string }>(
+        `/api/admin/tenant/api-keys?tenantId=${encodeURIComponent(activeAdminTenantId)}`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name,
+            ...(expiresIso ? { expiresAt: expiresIso } : {})
+          })
+        }
+      );
+      setTenantApiKeys((prev) => [payload.apiKey, ...prev.filter((entry) => entry.id !== payload.apiKey.id)]);
+      setTenantApiKeyPlainText(payload.plainTextKey);
+      setApiKeyNameDraft("");
+      setApiKeyExpiresAtDraft("");
+      setApiKeyNotice("");
+    } catch (error) {
+      setAdminError(error instanceof Error && error.message ? error.message : text.wheelSaveFailed);
+    } finally {
+      setIsApiKeySaving(false);
+    }
+  }
+
+  async function toggleTenantApiKey(keyId: string, action: "revoke" | "activate") {
+    if (!canUseAdminSetup || !activeAdminTenantId || !keyId) {
+      return;
+    }
+    try {
+      setIsApiKeySaving(true);
+      setAdminError("");
+      setApiKeyNotice("");
+      const payload = await requestJson<{ apiKey: ManagedApiKeyModel }>(
+        `/api/admin/tenant/api-keys/${encodeURIComponent(keyId)}?tenantId=${encodeURIComponent(activeAdminTenantId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ action })
+        }
+      );
+      setTenantApiKeys((prev) => prev.map((entry) => (entry.id === keyId ? payload.apiKey : entry)));
+    } catch (error) {
+      setAdminError(error instanceof Error && error.message ? error.message : text.wheelSaveFailed);
+    } finally {
+      setIsApiKeySaving(false);
+    }
+  }
+
+  async function deleteTenantApiKey(keyId: string) {
+    if (!canUseAdminSetup || !activeAdminTenantId || !keyId) {
+      return;
+    }
+    const confirmed = window.confirm(text.apiKeyDeleteConfirm);
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      setIsApiKeySaving(true);
+      setAdminError("");
+      setApiKeyNotice("");
+      await requestJson<{ deleted: boolean }>(
+        `/api/admin/tenant/api-keys/${encodeURIComponent(keyId)}?tenantId=${encodeURIComponent(activeAdminTenantId)}`,
+        {
+          method: "DELETE"
+        }
+      );
+      setTenantApiKeys((prev) => prev.filter((entry) => entry.id !== keyId));
+    } catch (error) {
+      setAdminError(error instanceof Error && error.message ? error.message : text.wheelSaveFailed);
+    } finally {
+      setIsApiKeySaving(false);
+    }
+  }
+
+  async function copyTenantApiKey() {
+    if (!tenantApiKeyPlainText) {
+      return;
+    }
+    const copied = await copyTextToClipboard(tenantApiKeyPlainText);
+    setApiKeyNotice(copied ? text.apiKeyCopied : text.apiKeyCopyFailed);
+  }
+
   async function loadAdminTenantContext(tenantId: string) {
     if (!tenantId) {
       setAdminUsers([]);
@@ -2927,6 +3229,7 @@ export default function Page() {
         setAdminUsers([]);
         setAdminOverview(null);
         await loadAdminTenantSettings("");
+        await loadTenantApiKeys("");
         setAdminError(text.adminTenantUnavailable);
         return;
       }
@@ -2936,7 +3239,8 @@ export default function Page() {
           `/api/admin/overview?tenantId=${encodeURIComponent(preferredTenantId)}`
         ),
         loadAdminTenantContext(preferredTenantId),
-        loadAdminTenantSettings(preferredTenantId)
+        loadAdminTenantSettings(preferredTenantId),
+        loadTenantApiKeys(preferredTenantId)
       ]);
       setAdminOverview(overviewPayload.overview);
     } catch {
@@ -4023,8 +4327,6 @@ export default function Page() {
   useEffect(() => {
     if (status !== "authenticated" || isSwitchingTenant || !activeTenantId) {
       setShareableUsers([]);
-      setShareUserSelectionEmail("");
-      setShareUserEmail("");
       return;
     }
 
@@ -4326,6 +4628,14 @@ export default function Page() {
     const timer = window.setTimeout(() => setAzureCopyNotice(""), 1800);
     return () => window.clearTimeout(timer);
   }, [azureCopyNotice]);
+
+  useEffect(() => {
+    if (!apiKeyNotice) {
+      return;
+    }
+    const timer = window.setTimeout(() => setApiKeyNotice(""), 2200);
+    return () => window.clearTimeout(timer);
+  }, [apiKeyNotice]);
 
   useEffect(
     () => () => {
@@ -5740,6 +6050,13 @@ export default function Page() {
               />
               <span>{text.seamShadow}</span>
             </label>
+            <section className="settings-theme-field settings-docs-field" aria-label={text.apiDocsTitle}>
+              <h4>{text.apiDocsTitle}</h4>
+              <p className="admin-meta">{text.apiDocsHint}</p>
+              <a className="settings-docs-link" href="/api/docs" target="_blank" rel="noreferrer">
+                {text.openApiDocs}
+              </a>
+            </section>
           </section>
         </div>
       ) : null}
@@ -5773,32 +6090,51 @@ export default function Page() {
                   <option value="OWNER">Owner</option>
                 </select>
               </label>
-              <div className="settings-share-row">
+              <div className="settings-share-search">
                 <label className="settings-share-inline-label">
-                  <span>{text.shareUserPickerField}</span>
-                  <select
-                    value={shareUserSelectionEmail}
-                    onChange={(event) => {
-                      const email = event.target.value;
-                      setShareUserSelectionEmail(email);
-                      setShareUserEmail(email);
-                    }}
-                  >
-                    <option value="">{text.shareUserPickerPlaceholder}</option>
-                    {shareableUsers.map((user) => (
-                      <option key={user.id} value={user.email ?? ""}>
-                        {user.name ? `${user.name} (${user.email ?? "-"})` : (user.email ?? "-")}
-                      </option>
-                    ))}
-                  </select>
+                  <span>{text.shareUserSearchField}</span>
+                  <input
+                    value={shareUserFilterQuery}
+                    placeholder={text.shareUserSearchPlaceholder}
+                    onChange={(event) => setShareUserFilterQuery(event.target.value)}
+                  />
                 </label>
-                <button
-                  type="button"
-                  onClick={shareWithUser}
-                  disabled={isSharingBusy || !(shareUserSelectionEmail || shareUserEmail).trim()}
-                >
-                  {text.shareUserAction}
-                </button>
+              </div>
+              <div className="settings-share-users-table">
+                <div className="settings-share-users-head">
+                  <span>{text.shareUsersTableName}</span>
+                  <span>{text.shareUsersTableEmail}</span>
+                  <span>{text.shareUsersTableAccess}</span>
+                  <span>{text.shareUsersTableActions}</span>
+                </div>
+                {filteredShareableUsers.length > 0 ? (
+                  filteredShareableUsers.map((user) => {
+                    const shareEntry = user.email ? userSharesByEmail.get(user.email.toLowerCase()) : undefined;
+                    return (
+                      <div key={user.id} className="settings-share-user-row">
+                        <span>{user.name || "-"}</span>
+                        <span>{user.email || "-"}</span>
+                        <span>{shareEntry?.role || text.shareUsersTableNotShared}</span>
+                        <div className="settings-share-user-actions">
+                          <button
+                            type="button"
+                            onClick={() => void shareWithUser(user.email ?? "")}
+                            disabled={isSharingBusy || !user.email}
+                          >
+                            {text.shareUserAction}
+                          </button>
+                          {shareEntry ? (
+                            <button type="button" className="secondary" onClick={() => void removeShare(shareEntry)} disabled={isSharingBusy}>
+                              {text.removeShare}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p className="settings-share-empty">{text.noMatches}</p>
+                )}
               </div>
               <div className="settings-share-row">
                 <input
@@ -5811,12 +6147,9 @@ export default function Page() {
                 </button>
               </div>
               <div className="settings-share-list">
-                {shares.length > 0 ? (
-                  shares.map((entry) => {
-                    const label =
-                      entry.targetType === "USER"
-                        ? entry.user?.email || entry.user?.name || "user"
-                        : entry.group?.displayName || entry.group?.tenantGroupId || "group";
+                {shares.some((entry) => entry.targetType === "AAD_GROUP") ? (
+                  shares.filter((entry) => entry.targetType === "AAD_GROUP").map((entry) => {
+                    const label = entry.group?.displayName || entry.group?.tenantGroupId || "group";
                     return (
                       <div key={entry.id} className="settings-share-item">
                         <span>{label}</span>
@@ -5931,7 +6264,8 @@ export default function Page() {
                             `/api/admin/overview?tenantId=${encodeURIComponent(nextTenantId)}`
                           ),
                           loadAdminTenantContext(nextTenantId),
-                          loadAdminTenantSettings(nextTenantId)
+                          loadAdminTenantSettings(nextTenantId),
+                          loadTenantApiKeys(nextTenantId)
                         ]);
                         setAdminOverview(overviewPayload.overview);
                       } catch {
@@ -6013,6 +6347,128 @@ export default function Page() {
                 </button>
               </div>
               {smtpNotice ? <p className="status-chip">{smtpNotice}</p> : null}
+            </section>
+
+            <section className="admin-users-block admin-scope-card" aria-label={text.apiKeysTitle}>
+              <h3>{text.apiKeysTitle}</h3>
+              <p className="admin-meta">{text.apiKeysHint}</p>
+              <div className="admin-form-grid">
+                <label>
+                  {text.apiKeyNameField}
+                  <input
+                    value={apiKeyNameDraft}
+                    onChange={(event) => setApiKeyNameDraft(event.target.value)}
+                    placeholder="integration-readonly"
+                  />
+                </label>
+                <label>
+                  {text.apiKeyExpiresAtField}
+                  <input
+                    type="datetime-local"
+                    value={apiKeyExpiresAtDraft}
+                    onChange={(event) => setApiKeyExpiresAtDraft(event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="admin-section-actions">
+                <button
+                  type="button"
+                  onClick={createTenantApiKey}
+                  disabled={isApiKeySaving || isApiKeyLoading || !activeAdminTenantId || !apiKeyNameDraft.trim()}
+                >
+                  {text.apiKeyCreateAction}
+                </button>
+              </div>
+              {tenantApiKeyPlainText ? (
+                <div className="api-key-created-box">
+                  <p className="admin-meta">{text.apiKeyCreatedLabel}</p>
+                  <code>{tenantApiKeyPlainText}</code>
+                  <div className="admin-section-actions">
+                    <button type="button" className="secondary" onClick={() => void copyTenantApiKey()}>
+                      {text.apiKeyCopy}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              {apiKeyNotice ? <p className="status-chip">{apiKeyNotice}</p> : null}
+              <div className="api-key-list">
+                {tenantApiKeys.length > 0 ? (
+                  tenantApiKeys.map((apiKey) => {
+                    const status = getManagedApiKeyStatus(apiKey);
+                    const statusLabel =
+                      status === "ACTIVE"
+                        ? text.apiKeyStatusActive
+                        : status === "REVOKED"
+                          ? text.apiKeyStatusRevoked
+                          : text.apiKeyStatusExpired;
+                    const createdBy = apiKey.createdBy?.name || apiKey.createdBy?.email || "-";
+                    return (
+                      <article key={apiKey.id} className="api-key-row">
+                        <header>
+                          <h4>{apiKey.name}</h4>
+                          <p>
+                            {text.apiKeyStatusField}: {statusLabel}
+                          </p>
+                        </header>
+                        <p>
+                          {text.apiKeyPrefixField}: <code>{apiKey.prefix}</code>
+                        </p>
+                        <p>
+                          {text.apiKeyCreatedAtField}: {formatAdminDateTime(apiKey.createdAt, language)}
+                        </p>
+                        <p>
+                          {text.apiKeyLastUsedAtField}:{" "}
+                          {apiKey.lastUsedAt ? formatAdminDateTime(apiKey.lastUsedAt, language) : text.apiKeyNeverUsed}
+                        </p>
+                        <p>
+                          {text.apiKeyExpiresAtField}:{" "}
+                          {apiKey.expiresAt ? formatAdminDateTime(apiKey.expiresAt, language) : text.apiKeyNeverExpires}
+                        </p>
+                        <p>
+                          {text.apiKeyCreatedByField}: {createdBy}
+                        </p>
+                        <div className="admin-user-actions">
+                          {status === "REVOKED" ? (
+                            <button
+                              type="button"
+                              className="secondary"
+                              onClick={() => {
+                                void toggleTenantApiKey(apiKey.id, "activate");
+                              }}
+                              disabled={isApiKeySaving || isApiKeyLoading}
+                            >
+                              {text.apiKeyActivate}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="secondary"
+                              onClick={() => {
+                                void toggleTenantApiKey(apiKey.id, "revoke");
+                              }}
+                              disabled={isApiKeySaving || isApiKeyLoading || status === "EXPIRED"}
+                            >
+                              {text.apiKeyRevoke}
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => {
+                              void deleteTenantApiKey(apiKey.id);
+                            }}
+                            disabled={isApiKeySaving || isApiKeyLoading}
+                          >
+                            {text.apiKeyDelete}
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })
+                ) : (
+                  <p className="admin-empty">{isApiKeyLoading ? text.loading : text.apiKeyNoKeys}</p>
+                )}
+              </div>
             </section>
 
             {adminOverview ? (

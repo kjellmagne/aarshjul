@@ -1,20 +1,40 @@
-import { ScheduleCadence } from "@prisma/client";
+import { ApiKeyScope, ScheduleCadence } from "@prisma/client";
 import { DateTime } from "luxon";
 import { NextResponse } from "next/server";
 
+import { getApiKeyPrincipalFromRequest } from "@/lib/access";
 import { prisma } from "@/lib/prisma";
 import { sendReminderEmail } from "@/lib/email";
 import { computeNextDeadline, syncReminderQueue } from "@/lib/reminders";
 
 export async function POST(request: Request) {
-  const jobSecret = process.env.REMINDER_JOB_SECRET;
-  if (!jobSecret) {
-    return NextResponse.json({ error: "REMINDER_JOB_SECRET is not configured" }, { status: 500 });
+  const apiKeyPrincipal = await getApiKeyPrincipalFromRequest(request, {
+    requiredScope: ApiKeyScope.SYSTEM
+  });
+  const hasApiKeyHeader = Boolean(request.headers.get("x-api-key") || request.headers.get("authorization"));
+
+  let isAuthorizedByApiKey = false;
+  if (apiKeyPrincipal instanceof NextResponse) {
+    if (hasApiKeyHeader) {
+      return apiKeyPrincipal;
+    }
+  } else if (apiKeyPrincipal) {
+    isAuthorizedByApiKey = true;
   }
 
-  const requestSecret = request.headers.get("x-job-secret");
-  if (requestSecret !== jobSecret) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isAuthorizedByApiKey) {
+    const jobSecret = process.env.REMINDER_JOB_SECRET;
+    if (!jobSecret) {
+      return NextResponse.json(
+        { error: "REMINDER_JOB_SECRET is not configured and no system API key was provided." },
+        { status: 500 }
+      );
+    }
+
+    const requestSecret = request.headers.get("x-job-secret");
+    if (requestSecret !== jobSecret) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   const now = new Date();
